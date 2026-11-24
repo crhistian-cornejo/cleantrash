@@ -23,6 +23,18 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
+# Agent hook helper (Claude Code / Codex / Antigravity → notch). Copied to Application Support at launch.
+HOOK_BIN="$(dirname "$BIN_PATH")/cleantrash-hook"
+if [[ -x "$HOOK_BIN" ]]; then
+  cp "$HOOK_BIN" "$APP_BUNDLE/Contents/MacOS/cleantrash-hook"
+fi
+
+# 3D glass icons (Nano Banana renders keyed by scripts/process-icons.swift)
+if [ -d "$ROOT/assets/icons3d" ]; then
+  mkdir -p "$APP_BUNDLE/Contents/Resources/Icons3D"
+  cp "$ROOT"/assets/icons3d/*.png "$APP_BUNDLE/Contents/Resources/Icons3D/"
+fi
+
 # Generate monochrome AppIcon.icns from assets/icon.svg if sips + iconutil exist
 ICONSET="$DIST_DIR/AppIcon.iconset"
 rm -rf "$ICONSET"

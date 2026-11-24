@@ -237,3 +237,40 @@ struct CleanTrashCoreTests {
         #expect(snap.gpu.deviceUtilizationPercent >= 0 && snap.gpu.deviceUtilizationPercent <= 100)
     }
 }
+
+@Test("WallpaperDoctor repoints desktops whose image vanished to the newest valid wallpaper")
+func wallpaperDoctorRepairsDanglingImages() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("wpdoc-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let good = dir.appendingPathComponent("good.jpg")
+    try Data([0xFF, 0xD8]).write(to: good)
+    let gone = dir.appendingPathComponent("gone.jpg")
+
+    func choice(_ url: URL) throws -> [String: Any] {
+        let cfg = try PropertyListSerialization.data(
+            fromPropertyList: ["type": "imageFile", "url": ["relative": url.absoluteString]], format: .binary, options: 0)
+        return ["Provider": "com.apple.wallpaper.choice.image", "Configuration": cfg, "Files": [Any]()]
+    }
+    func entry(_ url: URL, _ date: Date) throws -> [String: Any] {
+        ["Desktop": ["Content": ["Choices": [try choice(url)]], "LastUse": date]]
+    }
+    let index: [String: Any] = [
+        "SystemDefault": try entry(good, Date(timeIntervalSince1970: 2_000)),
+        "Spaces": ["A": ["Default": try entry(gone, Date(timeIntervalSince1970: 3_000))],
+                   "B": ["Default": try entry(gone, Date(timeIntervalSince1970: 1_000))]]
+    ]
+    let indexURL = dir.appendingPathComponent("Index.plist")
+    try PropertyListSerialization.data(fromPropertyList: index, format: .binary, options: 0).write(to: indexURL)
+
+    let doctor = WallpaperDoctor(indexURL: indexURL)
+    let before = doctor.diagnose()
+    #expect(before.brokenCount == 2)
+    #expect(before.totalImageChoices == 3)
+    #expect(before.replacementPath == good.path)
+
+    #expect(try doctor.repair(restartAgent: false) == 2)
+    let after = doctor.diagnose()
+    #expect(after.brokenCount == 0)
+    #expect(after.totalImageChoices == 3)
+}

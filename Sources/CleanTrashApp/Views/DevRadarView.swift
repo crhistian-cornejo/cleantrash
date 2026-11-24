@@ -32,10 +32,12 @@ struct DevRadarView: View {
         VStack(alignment: .leading, spacing: 14) {
             // Header
             HStack(alignment: .center) {
+                Icon3D(name: .dev, size: 58)
+                    .padding(.trailing, 8)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Text("Dev Radar")
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 28, weight: .light))
                             .foregroundStyle(Mono.ink(scheme))
                         HStack(spacing: 4) {
                             Circle().fill(Mono.healthy).frame(width: 6, height: 6)
@@ -74,12 +76,12 @@ struct DevRadarView: View {
                 let maxBytes = max(1, ecosystemTotals.first?.bytes ?? 1)
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("ESPACIO POR ECOSISTEMA")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        Text("Espacio por ecosistema")
+                            .font(.system(size: 10, weight: .bold).monospacedDigit())
                             .foregroundStyle(Mono.muted(scheme))
                         Spacer()
-                        Text("TOTAL \(ByteFormat.compact(appState.totalDevBytes))")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        Text("Total \(ByteFormat.compact(appState.totalDevBytes))")
+                            .font(.system(size: 10, weight: .bold).monospacedDigit())
                             .foregroundStyle(Mono.ink(scheme))
                     }
 
@@ -116,7 +118,7 @@ struct DevRadarView: View {
                                     .frame(height: 8)
 
                                     Text(ByteFormat.compact(entry.bytes))
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .font(.system(size: 11, weight: .bold).monospacedDigit())
                                         .foregroundStyle(Mono.ink(scheme).opacity(active ? 1.0 : 0.45))
                                         .frame(width: 68, alignment: .trailing)
                                 }
@@ -216,7 +218,7 @@ struct DevRadarView: View {
                     }
                 }
                 Text(item.path)
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .font(.system(size: 10.5).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -226,10 +228,10 @@ struct DevRadarView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text(ByteFormat.compact(item.sizeBytes))
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .font(.system(size: 13, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.ink(scheme))
                 Text(ByteFormat.relativeAge(item.lastModified))
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
             }
 

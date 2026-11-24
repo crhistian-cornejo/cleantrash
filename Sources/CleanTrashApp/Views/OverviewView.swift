@@ -24,78 +24,99 @@ struct OverviewView: View {
 
     // MARK: - Smart Care Hero
 
-    private var headerHero: some View {
-        HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(appState.telemetry.memory.pressure == .normal ? Mono.healthy : Mono.caution)
-                            .frame(width: 7, height: 7)
-                        Text(appState.telemetry.memory.pressure == .normal ? "Mac en buen estado" : "Memoria con carga alta")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(appState.telemetry.memory.pressure == .normal ? Mono.healthy : Mono.caution)
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill((appState.telemetry.memory.pressure == .normal ? Mono.healthy : Mono.caution).opacity(0.14)))
+    var headerHero: some View {
+        let health = appState.macHealth
+        let tint = health.tint(for: scheme)
+        return HStack(alignment: .center, spacing: 26) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(scheme == .dark ? 0.18 : 0.12))
+                    .frame(width: 150, height: 150)
+                    .blur(radius: 40)
+                Icon3D(name: .smartcare, size: 128)
+            }
+            .frame(width: 150, height: 140)
 
-                    MonoTag(text: "\(appState.telemetry.gpu.modelName) · \(appState.telemetry.coreCount) núcleos")
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    Circle().fill(tint).frame(width: 7, height: 7)
+                    (Text("Estado del Mac: ") + Text(health.label).foregroundStyle(tint))
+                        .font(.system(size: 12.5, weight: .semibold))
+                    if let reason = health.reason {
+                        Text("· \(reason)")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Mono.muted(scheme))
+                            .lineLimit(1)
+                    }
                 }
+                .foregroundStyle(Mono.ink(scheme))
+
+                Text("Cuidado inteligente")
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(Mono.ink(scheme))
 
                 Text(appState.totalSmartReclaimableBytes > 0
-                     ? "\(ByteFormat.compact(appState.totalSmartReclaimableBytes)) listos para liberar"
-                     : "Tu Mac está limpio y ligero")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(Mono.ink(scheme))
+                     ? "\(ByteFormat.compact(appState.totalSmartReclaimableBytes)) listos para liberar. Un mantenimiento rápido que prioriza lo esencial."
+                     : "Tu Mac está limpio y ligero. Analiza de nuevo cuando quieras.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Mono.muted(scheme))
                     .contentTransition(.numericText())
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text("Proyectos \(ByteFormat.compact(appState.reclaimableDevBytes)) · Sistema \(ByteFormat.compact(appState.reclaimableJunkBytes)) · Papelera \(ByteFormat.compact(appState.trashContents.totalBytes)) · \(appState.unusedApps.count) apps sin usar")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Mono.muted(scheme))
-            }
+                    .font(.system(size: 11.5).monospacedDigit())
+                    .foregroundStyle(Mono.subtle(scheme))
 
-            Spacer()
-
-            HStack(spacing: 10) {
-                Button {
-                    Task { await appState.runSmartScan() }
-                } label: {
-                    Label(
-                        appState.isScanningDev || appState.isScanningJunk ? "Analizando…" : "Analizar",
-                        systemImage: "magnifyingglass"
-                    )
-                }
-                .buttonStyle(MonoGhostButtonStyle())
-                .disabled(appState.isScanningDev || appState.isScanningJunk)
-
-                Button {
-                    confirmSmartClean = true
-                } label: {
-                    Label(
-                        appState.isCleaning ? (appState.cleaningLabel ?? "Limpiando…") : "Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))",
-                        systemImage: "sparkles"
-                    )
-                }
-                .buttonStyle(MonoPrimaryButtonStyle())
-                .disabled(appState.totalSmartReclaimableBytes == 0 || appState.isCleaning)
-                .confirmationDialog(
-                    "¿Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))?",
-                    isPresented: $confirmSmartClean,
-                    titleVisibility: .visible
-                ) {
-                    Button("Limpiar ahora", role: .destructive) {
-                        Task { await appState.runSmartClean() }
+                HStack(spacing: 10) {
+                    Button {
+                        confirmSmartClean = true
+                    } label: {
+                        Label(
+                            appState.isCleaning ? (appState.cleaningLabel ?? "Limpiando…") : "Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))",
+                            systemImage: "sparkles"
+                        )
                     }
-                    Button("Revisar primero") { appState.selectedSection = .systemJunk }
-                    Button("Cancelar", role: .cancel) {}
-                } message: {
-                    Text(smartCleanMessage)
+                    .buttonStyle(MonoPrimaryButtonStyle())
+                    .disabled(appState.totalSmartReclaimableBytes == 0 || appState.isCleaning)
+                    .confirmationDialog(
+                        "¿Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))?",
+                        isPresented: $confirmSmartClean,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Limpiar ahora", role: .destructive) {
+                            Task { await appState.runSmartClean() }
+                        }
+                        Button("Revisar primero") { appState.selectedSection = .systemJunk }
+                        Button("Cancelar", role: .cancel) {}
+                    } message: {
+                        Text(smartCleanMessage)
+                    }
+
+                    Button {
+                        Task { await appState.runSmartScan() }
+                    } label: {
+                        Label(
+                            appState.isScanningDev || appState.isScanningJunk ? "Analizando…" : "Analizar",
+                            systemImage: "magnifyingglass"
+                        )
+                    }
+                    .buttonStyle(MonoGhostButtonStyle())
+                    .disabled(appState.isScanningDev || appState.isScanningJunk)
+
+                    Text("\(appState.telemetry.gpu.modelName) · \(appState.telemetry.coreCount) núcleos")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Mono.subtle(scheme))
+                        .padding(.leading, 4)
                 }
+                .padding(.top, 4)
             }
+
+            Spacer(minLength: 0)
         }
-        .padding(18)
-        .monoCard(radius: 16, glass: true)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 20)
+        .monoCard(radius: 18, glass: true)
+        .animation(Mono.betweenSpring, value: health)
     }
 
     private var smartCleanMessage: String {
@@ -115,7 +136,8 @@ struct OverviewView: View {
             // 1. Storage
             bentoCard(
                 icon: "internaldrive",
-                label: appState.telemetry.disk.volumeName.uppercased(),
+                icon3D: .disk,
+                label: appState.telemetry.disk.volumeName,
                 primaryValue: ByteFormat.compact(appState.telemetry.disk.availableBytes),
                 subtitle: "libres de \(ByteFormat.compact(appState.telemetry.disk.totalBytes)) · purgable \(ByteFormat.compact(appState.telemetry.disk.purgeableBytes))",
                 progress: appState.telemetry.disk.usedPercent / 100.0,
@@ -130,7 +152,8 @@ struct OverviewView: View {
             // 2. RAM + Optimize
             bentoCard(
                 icon: "memorychip",
-                label: "MEMORIA · \(appState.telemetry.memory.pressure.label.uppercased())",
+                icon3D: .memory,
+                label: "Memoria · \(appState.telemetry.memory.pressure.label)",
                 primaryValue: "\(Int(appState.telemetry.memory.usedPercent))%",
                 subtitle: "\(ByteFormat.memory(appState.telemetry.memory.usedBytes)) / \(ByteFormat.memory(appState.telemetry.memory.totalBytes)) · Caché \(ByteFormat.memory(appState.telemetry.memory.cachedFilesBytes))",
                 progress: appState.telemetry.memory.usedPercent / 100.0,
@@ -143,7 +166,8 @@ struct OverviewView: View {
             // 3. GPU + Trim
             bentoCard(
                 icon: "cpu.fill",
-                label: "GPU · \(appState.telemetry.gpu.modelName.uppercased())",
+                icon3D: .gpu,
+                label: "GPU · \(appState.telemetry.gpu.modelName)",
                 primaryValue: "\(Int(appState.telemetry.gpu.deviceUtilizationPercent))%",
                 subtitle: "Render \(Int(appState.telemetry.gpu.rendererUtilizationPercent))% · En uso \(ByteFormat.memory(appState.telemetry.gpu.inUseMemoryBytes))",
                 progress: appState.telemetry.gpu.deviceUtilizationPercent / 100.0,
@@ -156,7 +180,8 @@ struct OverviewView: View {
             // 4. CPU
             bentoCard(
                 icon: "cpu",
-                label: "CPU · \(appState.telemetry.thermalState.uppercased())",
+                icon3D: .cpu,
+                label: "CPU · \(appState.telemetry.thermalState)",
                 primaryValue: "\(Int(appState.telemetry.cpuTotalPercent))%",
                 subtitle: "Usuario \(Int(appState.telemetry.cpuUserPercent))% · Sistema \(Int(appState.telemetry.cpuSystemPercent))% · \(appState.telemetry.coreCount) núcleos",
                 progress: appState.telemetry.cpuTotalPercent / 100.0,
@@ -211,6 +236,7 @@ struct OverviewView: View {
 
     private func bentoCard(
         icon: String,
+        icon3D: Icon3DName? = nil,
         label: String,
         primaryValue: String,
         subtitle: String,
@@ -220,17 +246,26 @@ struct OverviewView: View {
         action: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label(label, systemImage: icon)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Mono.muted(scheme))
+            HStack(spacing: 8) {
+                if let icon3D {
+                    Icon3D(name: icon3D, size: 30)
+                        .frame(width: 30, height: 22)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Mono.ink(scheme).opacity(0.8))
+                        .frame(width: 30, height: 22)
+                }
+                Text(label)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Mono.ink(scheme))
                     .lineLimit(1)
                 Spacer()
             }
 
             HStack(alignment: .center, spacing: 8) {
                 Text(primaryValue)
-                    .font(.system(size: 23, weight: .bold, design: .monospaced))
+                    .font(.system(size: 24, weight: .semibold).monospacedDigit())
                     .foregroundStyle(Mono.ink(scheme))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -246,12 +281,12 @@ struct OverviewView: View {
             Spacer(minLength: 0)
 
             Text(subtitle)
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(Mono.muted(scheme))
                 .lineLimit(1)
         }
         .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 122, maxHeight: 122, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .topLeading)
         .monoCard(radius: 14)
     }
 
@@ -259,8 +294,8 @@ struct OverviewView: View {
 
     private var externalVolumesStrip: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("DISCOS EXTERNOS (\(appState.telemetry.externalVolumes.count))")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+            Text("Discos externos (\(appState.telemetry.externalVolumes.count))")
+                .font(.system(size: 10, weight: .bold).monospacedDigit())
                 .foregroundStyle(Mono.muted(scheme))
 
             HStack(spacing: 12) {
@@ -274,7 +309,7 @@ struct OverviewView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Mono.ink(scheme))
                             Text("\(ByteFormat.compact(vol.availableBytes)) libres de \(ByteFormat.compact(vol.totalBytes))")
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(.system(size: 10).monospacedDigit())
                                 .foregroundStyle(Mono.muted(scheme))
                         }
                         Spacer()
@@ -308,9 +343,8 @@ struct OverviewView: View {
     private var liveChartStrip: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("EN VIVO · ÚLTIMOS 90 s")
-                    .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                    .tracking(0.8)
+                Text("En vivo · últimos 90 s")
+                    .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                 Spacer()
                 HStack(spacing: 14) {
@@ -357,7 +391,7 @@ struct OverviewView: View {
                     AxisValueLabel {
                         if let intVal = val.as(Int.self) {
                             Text("\(intVal)%")
-                                .font(.system(size: 9.5, design: .monospaced))
+                                .font(.system(size: 9.5).monospacedDigit())
                                 .foregroundStyle(Mono.muted(scheme))
                         }
                     }
@@ -375,7 +409,7 @@ struct OverviewView: View {
                 .fill(Mono.ink(scheme).opacity(opacity))
                 .frame(width: 7, height: 7)
             Text(title)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 10, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Mono.muted(scheme))
         }
     }
@@ -387,8 +421,8 @@ struct OverviewView: View {
             // Top Dev Targets
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("PROYECTOS MÁS PESADOS")
-                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                    Text("Proyectos más pesados")
+                        .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                         .foregroundStyle(Mono.muted(scheme))
                     Spacer()
                     Button("Ver todo") { appState.selectedSection = .devRadar }
@@ -413,7 +447,7 @@ struct OverviewView: View {
                                     .foregroundStyle(Mono.ink(scheme))
                                     .lineLimit(1)
                                 Text(item.path)
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .font(.system(size: 10).monospacedDigit())
                                     .foregroundStyle(Mono.muted(scheme))
                                     .lineLimit(1)
                                     .truncationMode(.middle)
@@ -423,7 +457,7 @@ struct OverviewView: View {
                                 MonoTag(text: "EN USO", inverted: true)
                             }
                             Text(ByteFormat.compact(item.sizeBytes))
-                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .bold).monospacedDigit())
                                 .foregroundStyle(Mono.ink(scheme))
                         }
                         .padding(.vertical, 4)
@@ -437,8 +471,8 @@ struct OverviewView: View {
             // Unused Software Prompt
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("APPS SIN USAR")
-                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                    Text("Apps sin usar")
+                        .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                         .foregroundStyle(Mono.muted(scheme))
                     Spacer()
                     Button("Revisar") { appState.selectedSection = .appsAudit }
@@ -467,7 +501,7 @@ struct OverviewView: View {
                             }
                             Spacer()
                             Text(ByteFormat.compact(app.totalSizeBytes))
-                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .bold).monospacedDigit())
                                 .foregroundStyle(Mono.ink(scheme))
                         }
                         .padding(.vertical, 3)

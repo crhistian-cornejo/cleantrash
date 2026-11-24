@@ -126,9 +126,8 @@ struct MainDashboardView: View {
                             Circle()
                                 .fill(appState.telemetry.memory.pressure == .normal ? Mono.healthy : Mono.caution)
                                 .frame(width: 6, height: 6)
-                            Text("EN VIVO")
-                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                                .tracking(0.8)
+                            Text("En vivo")
+                                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
                                 .foregroundStyle(Mono.muted(activeScheme))
                         }
                         Spacer()
@@ -137,7 +136,7 @@ struct MainDashboardView: View {
                             AppKitHaptics.tap()
                         } label: {
                             Text("Notch")
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Mono.ink(activeScheme))
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 2.5)
@@ -155,12 +154,12 @@ struct MainDashboardView: View {
 
                     if appState.totalReclaimedSessionBytes > 0 {
                         HStack {
-                            Text("LIBERADO HOY")
-                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            Text("Liberado hoy")
+                                .font(.system(size: 9, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(Mono.muted(activeScheme))
                             Spacer()
                             Text(ByteFormat.compact(appState.totalReclaimedSessionBytes))
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .font(.system(size: 10, weight: .bold).monospacedDigit())
                                 .foregroundStyle(Mono.healthy)
                         }
                         .padding(.top, 4)
@@ -195,13 +194,15 @@ struct MainDashboardView: View {
         } label: {
             if isCollapsed {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: section.symbol)
-                        .font(.system(size: 14.5, weight: isSelected ? .semibold : .medium))
-                        .frame(width: 42, height: 36)
-                        .foregroundStyle(isSelected ? Mono.primaryInk(activeScheme) : Mono.ink(activeScheme).opacity(0.84))
+                    Icon3D(name: section.icon3D, size: 26)
+                        .frame(width: 42, height: 38)
                         .background(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(isSelected ? Mono.primaryFill(activeScheme) : Color.clear)
+                                .fill(isSelected ? Mono.ink(activeScheme).opacity(0.13) : Color.clear)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(isSelected ? Mono.hairlineStrong(activeScheme) : Color.clear, lineWidth: 1)
                         )
 
                     if badge != nil && !isSelected {
@@ -214,38 +215,39 @@ struct MainDashboardView: View {
                 .contentShape(Rectangle())
             } else {
                 HStack(spacing: 9) {
-                    Image(systemName: section.symbol)
-                        .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
-                        .frame(width: 18)
+                    Icon3D(name: section.icon3D, size: 24)
+                        .frame(width: 26)
                     Text(section.rawValue)
-                        .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: 13.5, weight: .medium))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
                     if let badge {
                         Text(badge)
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.system(size: 10, weight: .bold).monospacedDigit())
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
-                            .foregroundStyle(isSelected ? Mono.primaryInk(activeScheme) : Mono.ink(activeScheme).opacity(0.82))
+                            .foregroundStyle(Mono.ink(activeScheme).opacity(0.86))
                             .padding(.horizontal, 6.5)
                             .padding(.vertical, 2)
                             .background(
                                 Capsule().fill(
-                                    isSelected
-                                        ? Mono.primaryInk(activeScheme).opacity(0.16)
-                                        : Mono.ink(activeScheme).opacity(0.12)
+                                    Mono.ink(activeScheme).opacity(isSelected ? 0.16 : 0.12)
                                 )
                             )
                     }
                 }
-                .foregroundStyle(isSelected ? Mono.primaryInk(activeScheme) : Mono.ink(activeScheme).opacity(0.86))
-                .padding(.horizontal, 11)
-                .padding(.vertical, 8.5)
-                .frame(height: 35)
+                .foregroundStyle(Mono.ink(activeScheme).opacity(isSelected ? 1 : 0.82))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(height: 42)
                 .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(isSelected ? Mono.primaryFill(activeScheme) : Color.clear)
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(isSelected ? Mono.ink(activeScheme).opacity(0.13) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(isSelected ? Mono.hairlineStrong(activeScheme) : Color.clear, lineWidth: 1)
                 )
                 .contentShape(Rectangle())
             }
@@ -271,12 +273,12 @@ struct MainDashboardView: View {
     private func miniVital(_ label: String, pct: Double) -> some View {
         HStack(spacing: 8) {
             Text(label)
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Mono.muted(activeScheme))
                 .frame(width: 28, alignment: .leading)
             MonoProgressBar(value: pct / 100.0, height: 4)
             Text("\(Int(pct))%")
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Mono.ink(activeScheme))
                 .frame(width: 30, alignment: .trailing)
                 .contentTransition(.numericText())
@@ -497,7 +499,7 @@ private struct FullDiskAccessGuideSheet: View {
     private func stepRow(_ num: String, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(num)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.system(size: 11, weight: .bold).monospacedDigit())
                 .foregroundStyle(Mono.primaryInk(scheme))
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(Mono.primaryFill(scheme)))

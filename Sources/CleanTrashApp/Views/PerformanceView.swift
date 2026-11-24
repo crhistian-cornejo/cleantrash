@@ -21,12 +21,14 @@ struct PerformanceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
+                    Icon3D(name: .performance, size: 58)
+                        .padding(.trailing, 8)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Rendimiento · RAM y GPU")
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 28, weight: .light))
                             .foregroundStyle(Mono.ink(scheme))
                         Text("Libera memoria RAM, optimiza la GPU y revisa qué apps consumen más recursos.")
-                            .font(.system(size: 12))
+                            .font(.system(size: 13.5))
                             .foregroundStyle(Mono.muted(scheme))
                     }
                     Spacer()
@@ -83,12 +85,12 @@ struct PerformanceView: View {
                 // Top Memory Consumers Table
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("PROCESOS QUE MÁS RAM USAN")
-                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                        Text("Procesos que más RAM usan")
+                            .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                             .foregroundStyle(Mono.muted(scheme))
                         Spacer()
-                        Text("PID · RAM RESIDENTE")
-                            .font(.system(size: 10, design: .monospaced))
+                        Text("PID · RAM residente")
+                            .font(.system(size: 10).monospacedDigit())
                             .foregroundStyle(Mono.subtle(scheme))
                     }
 
@@ -103,14 +105,14 @@ struct PerformanceView: View {
                                     .font(.system(size: 12.5, weight: .semibold))
                                     .foregroundStyle(Mono.ink(scheme))
                                 Text("PID \(proc.pid)\(proc.bundleIdentifier.map { " · \($0)" } ?? "")")
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .font(.system(size: 10).monospacedDigit())
                                     .foregroundStyle(Mono.muted(scheme))
                             }
 
                             Spacer()
 
                             Text(ByteFormat.compact(proc.memoryBytes))
-                                .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                                .font(.system(size: 12.5, weight: .bold).monospacedDigit())
                                 .foregroundStyle(Mono.ink(scheme))
                                 .frame(width: 76, alignment: .trailing)
 
@@ -137,20 +139,20 @@ struct PerformanceView: View {
         let mem = appState.telemetry.memory
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("MEMORIA UNIFICADA")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                Text("Memoria unificada")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                 Spacer()
-                MonoTag(text: mem.pressure.label.uppercased(), inverted: mem.pressure != .normal)
+                MonoTag(text: mem.pressure.label, inverted: mem.pressure != .normal)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(Int(mem.usedPercent))%")
-                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .font(.system(size: 32, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.ink(scheme))
                     .contentTransition(.numericText())
                 Text("\(ByteFormat.memory(mem.usedBytes)) / \(ByteFormat.memory(mem.totalBytes))")
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
             }
 
@@ -181,7 +183,7 @@ struct PerformanceView: View {
                             .foregroundStyle(Mono.ink(scheme))
                         Spacer()
                         Text(ByteFormat.memory(seg.bytes))
-                            .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                             .foregroundStyle(Mono.muted(scheme))
                     }
                 }
@@ -192,7 +194,7 @@ struct PerformanceView: View {
                         .foregroundStyle(Mono.muted(scheme))
                     Spacer()
                     Text("\(ByteFormat.memory(mem.swapUsedBytes)) / \(ByteFormat.memory(mem.swapTotalBytes))")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: 11).monospacedDigit())
                         .foregroundStyle(Mono.muted(scheme))
                 }
             }
@@ -206,20 +208,20 @@ struct PerformanceView: View {
         let gpu = appState.telemetry.gpu
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("GPU · IOKIT")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                Text("GPU · IOKit")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                 Spacer()
-                MonoTag(text: gpu.modelName.uppercased())
+                MonoTag(text: gpu.modelName)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(Int(gpu.deviceUtilizationPercent))%")
-                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .font(.system(size: 32, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.ink(scheme))
                     .contentTransition(.numericText())
                 Text("Uso del dispositivo")
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
             }
 
@@ -237,7 +239,7 @@ struct PerformanceView: View {
                         .foregroundStyle(Mono.ink(scheme))
                     Spacer()
                     Text(ByteFormat.compact(gpu.inUseMemoryBytes))
-                        .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                        .font(.system(size: 11.5, weight: .bold).monospacedDigit())
                         .foregroundStyle(Mono.ink(scheme))
                 }
                 HStack {
@@ -246,7 +248,7 @@ struct PerformanceView: View {
                         .foregroundStyle(Mono.muted(scheme))
                     Spacer()
                     Text(ByteFormat.compact(gpu.allocatedMemoryBytes))
-                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Mono.muted(scheme))
                 }
             }
@@ -283,7 +285,7 @@ struct PerformanceView: View {
                     .foregroundStyle(Mono.muted(scheme))
                 Spacer()
                 Text("\(Int(pct))%")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
                     .foregroundStyle(Mono.ink(scheme))
             }
             MonoProgressBar(value: pct / 100.0, height: 4.5)

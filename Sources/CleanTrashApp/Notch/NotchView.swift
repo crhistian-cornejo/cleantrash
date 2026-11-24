@@ -3,6 +3,7 @@ import SwiftUI
 
 enum NotchTab: String, CaseIterable, Identifiable {
     case vitals = "Estado"
+    case agents = "Agentes"
     case dev = "Dev"
     case unused = "Apps"
     case actions = "Acciones"
@@ -12,6 +13,7 @@ enum NotchTab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .vitals: return "waveform.path.ecg"
+        case .agents: return "sparkles"
         case .dev: return "terminal"
         case .unused: return "app.dashed"
         case .actions: return "bolt"
@@ -34,29 +36,41 @@ struct NotchRootView: View {
     /// Destructive actions need a second tap within 3 s (prevents accidental cleans from a stray hover-click).
     @State private var armedAction: String?
     @State private var armTask: Task<Void, Never>?
+    @State private var hoveredTab: NotchTab?
 
     private var isIsland: Bool { appState.settings.notchStyle == .island }
     private var hasNotice: Bool { appState.activeNotice != nil && !coordinator.isExpanded }
+    /// An agent is waiting for Allow / Deny: the closed notch grows into a permission card.
+    private var hasPermission: Bool { !appState.agents.pending.isEmpty && !coordinator.isExpanded }
 
     private var targetWidth: CGFloat {
-        if coordinator.isExpanded { return 488 }
+        if coordinator.isExpanded { return NotchCoordinator.expandedWidth }
+        if hasPermission { return NotchCoordinator.permissionWidth }
         if hasNotice { return NotchCoordinator.noticeWidth }
         if appState.settings.showLiveNotchEars {
-            return coordinator.closedWidth + 144
+            return coordinator.closedWidth + 2 * NotchCoordinator.earWidth
         }
         return coordinator.closedWidth
     }
 
-    /// header + tab bar (8 + 32 + 12) + 2×104 tiles + 10 gap + 16 bottom padding.
-    static func expandedHeight(headerHeight: CGFloat, isIsland: Bool) -> CGFloat {
-        headerHeight + (isIsland ? 6 : 0) + 52 + 218 + 16
+    /// Horizontal content inset of the open notch: the 14 pt concave shoulder eats into each side, so
+    /// content needs that plus a real 16 pt gutter to breathe.
+    static let sideInset: CGFloat = 30
+
+    /// "Estado del Mac" hero row shown above the tabs (hidden inside a drill-down).
+    static let statusHeight: CGFloat = 64
+
+    /// header + status hero + tab bar (8 + 32 + 12) + 2×104 tiles + 10 gap + 16 bottom padding.
+    static func expandedHeight(headerHeight: CGFloat, isIsland: Bool, showsStatus: Bool = true) -> CGFloat {
+        headerHeight + (isIsland ? 6 : 0) + (showsStatus ? statusHeight : 0) + 52 + 218 + 16
     }
 
     private var targetHeight: CGFloat {
         if coordinator.isExpanded {
-            return Self.expandedHeight(headerHeight: headerHeight, isIsland: isIsland)
+            return Self.expandedHeight(headerHeight: headerHeight, isIsland: isIsland, showsStatus: coordinator.detail == nil)
                 + (coordinator.detail?.extraHeight ?? 0)
         }
+        if hasPermission { return coordinator.closedHeight + permissionCardHeight }
         if hasNotice { return coordinator.closedHeight + 60 }
         return coordinator.closedHeight
     }
@@ -89,6 +103,9 @@ struct NotchRootView: View {
                 if coordinator.isExpanded {
                     expandedContent
                         .transition(.opacity.combined(with: .offset(y: -4)))
+                } else if let request = appState.agents.pending.first {
+                    permissionContent(request)
+                        .transition(.opacity)
                 } else if let notice = appState.activeNotice {
                     noticeContent(notice)
                         .transition(.opacity)
@@ -102,12 +119,12 @@ struct NotchRootView: View {
                     .fill(Color(hex: 0x050505))
                     .overlay(
                         outlineShape.stroke(
-                            Color.white.opacity(coordinator.isExpanded || hasNotice ? 0.14 : 0.06),
+                            Color.white.opacity(coordinator.isExpanded || hasNotice || hasPermission ? 0.14 : 0.06),
                             lineWidth: 1
                         )
                     )
                     .shadow(
-                        color: .black.opacity(coordinator.isExpanded || hasNotice ? 0.55 : 0.0),
+                        color: .black.opacity(coordinator.isExpanded || hasNotice || hasPermission ? 0.55 : 0.0),
                         radius: coordinator.isExpanded ? 26 : 12,
                         y: coordinator.isExpanded ? 12 : 4
                     )
@@ -118,9 +135,14 @@ struct NotchRootView: View {
                 value: coordinator.isExpanded
             )
             .animation(reduceMotion ? .none : Mono.betweenSpring, value: appState.activeNotice?.id)
+            .animation(reduceMotion ? .none : Mono.betweenSpring, value: appState.agents.pending.first?.id)
         }
         .frame(width: coordinator.stageWidth, height: coordinator.stageHeight, alignment: .top)
         .environment(\.colorScheme, .dark)
+        .onChange(of: coordinator.isExpanded) { _, expanded in
+            // Opening while an agent waits lands on its card.
+            if expanded && !appState.agents.pending.isEmpty { selectedTab = .agents }
+        }
     }
 
     // MARK: - Idle Hardware Ears
@@ -128,50 +150,54 @@ struct NotchRootView: View {
     private var idleContent: some View {
         HStack(spacing: 0) {
             if appState.settings.showLiveNotchEars {
-                // Left Ear: live activity spinner while working, otherwise RAM %
-                HStack(spacing: 4) {
+                // Left ear: RAM · CPU · GPU (or the running task while CleanTrash works).
+                Group {
                     if appState.activityLabel != nil {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(.white)
-                            .scaleEffect(0.7)
-                            .frame(width: 10, height: 10)
-                        Text(activityShort)
-                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                        HStack(spacing: 5) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(.white)
+                                .scaleEffect(0.7)
+                                .frame(width: 10, height: 10)
+                            Text(activityShort)
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                        }
+                        .transition(.opacity)
                     } else {
-                        Circle()
-                            .fill(memoryDotColor)
-                            .frame(width: 4.5, height: 4.5)
-                        Text("RAM \(Int(appState.telemetry.memory.usedPercent))%")
-                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.white.opacity(0.82))
-                            .contentTransition(.numericText())
+                        NotchMetricsEar(
+                            memory: appState.telemetry.memory.usedPercent,
+                            cpu: appState.telemetry.cpuTotalPercent,
+                            gpu: appState.telemetry.gpu.deviceUtilizationPercent
+                        )
+                        .transition(.opacity)
                     }
                 }
-                .frame(width: 68, alignment: .leading)
+                .frame(width: NotchCoordinator.earWidth - 14, alignment: .leading)
                 .padding(.leading, 14)
                 .animation(Mono.betweenSpring, value: appState.activityLabel)
 
-                Spacer(minLength: coordinator.closedWidth - 16)
+                Spacer(minLength: 0)
 
-                // Right Ear: GPU % or Reclaimable Dev Badge
-                HStack(spacing: 4) {
-                    if appState.reclaimableDevBytes >= 1_000_000_000 {
-                        Text(ByteFormat.compact(appState.reclaimableDevBytes))
-                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.white)
-                    } else {
-                        Text("GPU \(Int(appState.telemetry.gpu.deviceUtilizationPercent))%")
-                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.white.opacity(0.82))
-                            .contentTransition(.numericText())
+                // Right ear: logos of the agents at work, the latest in front.
+                Group {
+                    let stack = appState.agents.earStack
+                    if !stack.isEmpty {
+                        NotchAgentsEar(stack: stack)
+                    } else if appState.reclaimableDevBytes >= 1_000_000_000 {
+                        HStack(spacing: 3) {
+                            Icon3D(name: .dev, size: 15)
+                            Text(ByteFormat.compact(appState.reclaimableDevBytes))
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(Color.white.opacity(0.86))
+                        }
+                        .help("Espacio recuperable en carpetas de desarrollo")
+                        .transition(.opacity)
                     }
                 }
-                .frame(width: 68, alignment: .trailing)
-                .padding(.trailing, 14)
+                .frame(width: NotchCoordinator.earWidth - 12, alignment: .trailing)
+                .padding(.trailing, 12)
             } else {
                 Spacer()
             }
@@ -190,6 +216,30 @@ struct NotchRootView: View {
         case .normal: return Color.white.opacity(0.45)
         case .critical: return Mono.danger
         default: return Mono.caution
+        }
+    }
+
+    // MARK: - Agent Permission Toast
+
+    private let permissionCardHeight: CGFloat = 138
+
+    private func permissionContent(_ request: AgentPermissionRequest) -> some View {
+        VStack(spacing: 0) {
+            Spacer().frame(height: isIsland ? 10 : coordinator.closedHeight + 6)
+            AgentPermissionCard(
+                request: request,
+                monitor: appState.agents,
+                isToast: true,
+                queueCount: appState.agents.pending.count
+            )
+            .padding(.horizontal, 26)
+            .padding(.bottom, 12)
+            .id(request.id)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(alignment: .bottom) {
+            aurora([request.source.tint, Mono.caution, Color(hex: 0xF472B6)])
+                .transition(.opacity)
         }
     }
 
@@ -212,7 +262,7 @@ struct NotchRootView: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(notice.subtitle)
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .font(.system(size: 10.5).monospacedDigit())
                         .foregroundStyle(Color.white.opacity(0.62))
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -232,7 +282,7 @@ struct NotchRootView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(Capsule().fill(.white))
-                    .buttonStyle(NotchPressStyle())
+                    .buttonStyle(NotchButtonStyle())
                 }
 
                 Button {
@@ -240,13 +290,55 @@ struct NotchRootView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                        .frame(width: 20, height: 20)
+                        .foregroundStyle(Color.white.opacity(0.7))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.08)))
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 24)
             .padding(.bottom, 10)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .background(alignment: .bottom) {
+            noticeAurora(notice.kind)
+                .id(notice.id)
+                .transition(.opacity)
+        }
+    }
+
+    /// Color wash that rises from the bottom edge of a notice, keyed to its kind.
+    private func noticeAurora(_ kind: NotchNoticeKind) -> some View {
+        aurora(noticeGradient(kind))
+    }
+
+    private func aurora(_ colors: [Color]) -> some View {
+        ZStack {
+            LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+                .frame(height: 30)
+                .blur(radius: 22)
+                .offset(y: 20)
+            LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+                .frame(height: 1)
+                .blur(radius: 1)
+                .opacity(0.35)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+        }
+        .frame(height: 40)
+        .mask(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
+        .opacity(0.22)
+        .allowsHitTesting(false)
+    }
+
+    private func noticeGradient(_ kind: NotchNoticeKind) -> [Color] {
+        switch kind {
+        case .cleaned: return [Color(hex: 0x34D399), Color(hex: 0x22D3EE), Color(hex: 0x818CF8)]
+        case .warning, .highMemory: return [Color(hex: 0xFBBF24), Color(hex: 0xF97316), Color(hex: 0xF472B6)]
+        case .heavyCPU: return [Color(hex: 0xF97316), Color(hex: 0xEF4444), Color(hex: 0xA855F7)]
+        case .failed: return [Color(hex: 0xEF4444), Color(hex: 0xF43F5E), Color(hex: 0xA855F7)]
+        case .devBloat: return [Color(hex: 0x60A5FA), Color(hex: 0x818CF8), Color(hex: 0xC084FC)]
+        case .unusedApp: return [Color(hex: 0xC084FC), Color(hex: 0xF472B6), Color(hex: 0x60A5FA)]
         }
     }
 
@@ -295,7 +387,7 @@ struct NotchRootView: View {
             expandedHeader
             if let detail = coordinator.detail {
                 NotchDetailView(appState: appState, coordinator: coordinator, detail: detail)
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, Self.sideInset)
                     .padding(.top, 8)
                     .padding(.bottom, 16)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -304,8 +396,11 @@ struct NotchRootView: View {
                         removal: .opacity
                     ))
             } else {
+            statusHero
+                .transition(.opacity)
+
             tabBar
-                .padding(.horizontal, 18)
+                .padding(.horizontal, Self.sideInset)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
                 .transition(.opacity)
@@ -315,6 +410,8 @@ struct NotchRootView: View {
                 switch selectedTab {
                 case .vitals:
                     vitalsTab
+                case .agents:
+                    NotchAgentsTab(monitor: appState.agents)
                 case .dev:
                     devTab
                 case .unused:
@@ -325,12 +422,70 @@ struct NotchRootView: View {
             }
             .id(selectedTab)
             .transition(.opacity.combined(with: .offset(y: 3)))
-            .padding(.horizontal, 18)
+            .padding(.horizontal, Self.sideInset)
             .padding(.bottom, 16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
         .animation(reduceMotion ? .none : Mono.openingSpring, value: coordinator.detail)
+    }
+
+    // MARK: - Estado del Mac (hero above the tabs)
+
+    private var statusHero: some View {
+        let health = appState.macHealth
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                (Text("Estado del Mac: ").foregroundStyle(Color.white)
+                    + Text(health.label).foregroundStyle(health.tint))
+                    .font(.system(size: 19, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .contentTransition(.interpolate)
+                Text(health.reason ?? macSubtitle)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .animation(Mono.betweenSpring, value: health)
+
+            Spacer(minLength: 6)
+
+            if let area = health.area, health.level != .good {
+                Button {
+                    openDetail(area.notchDetail)
+                } label: {
+                    Text("Revisar")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(health.tint))
+                }
+                .buttonStyle(NotchButtonStyle())
+                .help(health.issueCount > 1 ? "\(health.issueCount) avisos" : "Ver detalle")
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
+
+            Icon3D(name: .mac, size: 52)
+        }
+        .padding(.horizontal, Self.sideInset + 2)
+        .frame(height: Self.statusHeight)
+        .background(alignment: .trailing) {
+            // Soft halo behind the laptop, tinted by the verdict.
+            Circle()
+                .fill(health.tint.opacity(0.16))
+                .frame(width: 90, height: 90)
+                .blur(radius: 26)
+                .offset(x: -14)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var macSubtitle: String {
+        let t = appState.telemetry
+        return "Tu Mac · \(t.gpu.modelName) · \(t.coreCount) núcleos"
     }
 
     private func openDetail(_ detail: NotchDetail) {
@@ -353,9 +508,8 @@ struct NotchRootView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .symbolEffect(.pulse, isActive: appState.activityLabel != nil && !reduceMotion)
-                Text("CLEANTRASH")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .tracking(1.1)
+                Text("CleanTrash")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
                     .foregroundStyle(Color.white.opacity(0.9))
                     .lineLimit(1)
                     .fixedSize()
@@ -372,7 +526,7 @@ struct NotchRootView: View {
                     HStack(spacing: 4) {
                         ProgressView().controlSize(.mini).tint(.white).scaleEffect(0.65).frame(width: 10, height: 10)
                         Text(activityShort)
-                            .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
                             .foregroundStyle(Color.white.opacity(0.85))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
@@ -384,7 +538,7 @@ struct NotchRootView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 } else if appState.totalReclaimedSessionBytes > 0 {
                     Text("+\(ByteFormat.compact(appState.totalReclaimedSessionBytes))")
-                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .font(.system(size: 9.5, weight: .bold).monospacedDigit())
                         .foregroundStyle(Mono.healthy)
                         .lineLimit(1)
                         .fixedSize()
@@ -406,14 +560,14 @@ struct NotchRootView: View {
                         .background(Circle().fill(Color.white.opacity(0.1)))
                         .contentShape(Circle())
                 }
-                .buttonStyle(NotchPressStyle())
+                .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
                 .help("Abrir el panel de CleanTrash")
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .animation(Mono.betweenSpring, value: appState.activityLabel)
         }
         .frame(height: headerHeight)
-        .padding(.horizontal, 22)
+        .padding(.horizontal, Self.sideInset + 2)
         .padding(.top, isIsland ? 6 : 0)
     }
 
@@ -422,6 +576,7 @@ struct NotchRootView: View {
         HStack(spacing: 0) {
             ForEach(NotchTab.allCases) { tab in
                 let isSelected = selectedTab == tab
+                let isHovered = hoveredTab == tab && !isSelected
                 Button {
                     guard selectedTab != tab else { return }
                     withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
@@ -437,7 +592,7 @@ struct NotchRootView: View {
                             .fixedSize()
                         if let badge = tabBadge(tab) {
                             Text(badge)
-                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                .font(.system(size: 8.5, weight: .bold).monospacedDigit())
                                 .foregroundStyle(isSelected ? Color.white : Color.black)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
@@ -445,7 +600,7 @@ struct NotchRootView: View {
                                 .fixedSize()
                         }
                     }
-                    .foregroundStyle(isSelected ? Color.black : Color.white.opacity(0.62))
+                    .foregroundStyle(isSelected ? Color.black : Color.white.opacity(isHovered ? 0.95 : 0.62))
                     .frame(maxWidth: .infinity)
                     .frame(height: 26)
                     .background {
@@ -453,11 +608,21 @@ struct NotchRootView: View {
                             Capsule()
                                 .fill(Color.white)
                                 .matchedGeometryEffect(id: "notchTabPill", in: tabNamespace)
+                        } else if isHovered {
+                            Capsule()
+                                .fill(Color.white.opacity(0.1))
+                                .transition(.opacity)
                         }
                     }
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .onHover { inside in
+                    withAnimation(Mono.fast) {
+                        if inside { hoveredTab = tab } else if hoveredTab == tab { hoveredTab = nil }
+                    }
+                }
+                .pointingHandCursor()
             }
         }
         .padding(3)
@@ -470,6 +635,10 @@ struct NotchRootView: View {
 
     private func tabBadge(_ tab: NotchTab) -> String? {
         switch tab {
+        case .agents:
+            if !appState.agents.pending.isEmpty { return "\(appState.agents.pending.count)" }
+            let working = appState.agents.workingCount
+            return working > 0 ? "\(working)" : nil
         case .dev:
             let count = appState.devArtifacts.filter { !$0.isActiveBuild }.count
             return count > 0 ? "\(count)" : nil
@@ -497,7 +666,7 @@ struct NotchRootView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
             Text(subtitle)
-                .font(.system(size: 10.5, design: .monospaced))
+                .font(.system(size: 10.5).monospacedDigit())
                 .foregroundStyle(Color.white.opacity(0.5))
                 .multilineTextAlignment(.center)
             Spacer(minLength: 0)
@@ -512,8 +681,8 @@ struct NotchRootView: View {
             GridRow {
                 // Top-Left: RAM Card with Optimize action
                 notchMetricTile(
-                    icon: "memorychip",
-                    title: "MEMORIA",
+                    icon: .memory,
+                    title: "Memoria",
                     value: "\(Int(appState.telemetry.memory.usedPercent))%",
                     detail: "\(ByteFormat.memory(appState.telemetry.memory.usedBytes)) / \(ByteFormat.memory(appState.telemetry.memory.totalBytes)) · \(appState.telemetry.memory.pressure.label)",
                     progress: appState.telemetry.memory.usedPercent / 100.0,
@@ -526,7 +695,7 @@ struct NotchRootView: View {
 
                 // Top-Right: GPU Card with Trim action
                 notchMetricTile(
-                    icon: "cpu.fill",
+                    icon: .gpu,
                     title: "GPU · \(appState.telemetry.gpu.modelName)",
                     value: "\(Int(appState.telemetry.gpu.deviceUtilizationPercent))%",
                     detail: "En uso \(ByteFormat.memory(appState.telemetry.gpu.inUseMemoryBytes)) · Asignada \(ByteFormat.memory(appState.telemetry.gpu.allocatedMemoryBytes))",
@@ -542,8 +711,8 @@ struct NotchRootView: View {
             GridRow {
                 // Bottom-Left: Disk Card
                 notchMetricTile(
-                    icon: "internaldrive",
-                    title: appState.telemetry.disk.volumeName.uppercased(),
+                    icon: .disk,
+                    title: appState.telemetry.disk.volumeName,
                     value: ByteFormat.compact(appState.telemetry.disk.availableBytes),
                     detail: "de \(ByteFormat.compact(appState.telemetry.disk.totalBytes)) · basura \(ByteFormat.compact(appState.totalSmartReclaimableBytes))",
                     progress: appState.telemetry.disk.usedPercent / 100.0,
@@ -561,8 +730,8 @@ struct NotchRootView: View {
 
                 // Bottom-Right: CPU with one-tap relief for whatever is hogging it
                 notchMetricTile(
-                    icon: "cpu",
-                    title: "CPU · \(appState.telemetry.thermalState.uppercased())",
+                    icon: .cpu,
+                    title: "CPU · \(appState.telemetry.thermalState)",
                     value: "\(Int(appState.telemetry.cpuTotalPercent))%",
                     detail: cpuTileDetail,
                     progress: appState.telemetry.cpuTotalPercent / 100.0,
@@ -596,7 +765,7 @@ struct NotchRootView: View {
     }
 
     private func notchMetricTile(
-        icon: String,
+        icon: Icon3DName,
         title: String,
         value: String,
         detail: String,
@@ -609,13 +778,12 @@ struct NotchRootView: View {
         action: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.75))
+            HStack(spacing: 6) {
+                Icon3D(name: icon, size: 22)
+                    .frame(width: 22, height: 16)
                 Text(title)
-                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.75))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.85))
                     .lineLimit(1)
                 Spacer()
                 if onOpen != nil {
@@ -627,7 +795,7 @@ struct NotchRootView: View {
 
             HStack(alignment: .center, spacing: 6) {
                 Text(value)
-                    .font(.system(size: 19, weight: .bold, design: .monospaced))
+                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -642,9 +810,9 @@ struct NotchRootView: View {
                     .padding(.vertical, 3.5)
                     .background(Capsule().fill(isArmed ? Mono.danger : Color.white))
                     .opacity(isDisabled && !isArmed ? 0.4 : 1)
-                    .buttonStyle(.plain)
                     .disabled(isDisabled && !isArmed)
                     .contentTransition(.interpolate)
+                    .buttonStyle(NotchButtonStyle())
             }
 
             NotchBar(value: progress, tint: progressTint ?? .white)
@@ -652,7 +820,7 @@ struct NotchRootView: View {
             Spacer(minLength: 0)
 
             Text(detail)
-                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                .font(.system(size: 9.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(Color.white.opacity(0.72))
                 .lineLimit(1)
         }
@@ -666,8 +834,8 @@ struct NotchRootView: View {
     private var devTab: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("PROYECTOS · \(ByteFormat.compact(appState.reclaimableDevBytes)) RECUPERABLES")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                Text("Proyectos · \(ByteFormat.compact(appState.reclaimableDevBytes)) recuperables")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
                     .foregroundStyle(Color.white.opacity(0.65))
                 Spacer()
                 Button(appState.isScanningDev ? "Buscando…" : "Buscar") {
@@ -708,21 +876,21 @@ struct NotchRootView: View {
                                             .foregroundStyle(.white)
                                             .lineLimit(1)
                                         Text(item.artifactKind)
-                                            .font(.system(size: 10, design: .monospaced))
+                                            .font(.system(size: 10).monospacedDigit())
                                             .foregroundStyle(Color.white.opacity(0.55))
                                         if item.isActiveBuild {
                                             MonoTag(text: "EN USO", inverted: true)
                                         }
                                     }
                                     Text("Sin tocar \(ByteFormat.relativeAge(item.lastModified))")
-                                        .font(.system(size: 9.5, design: .monospaced))
+                                        .font(.system(size: 9.5).monospacedDigit())
                                         .foregroundStyle(Color.white.opacity(0.45))
                                 }
 
                                 Spacer()
 
                                 Text(ByteFormat.compact(item.sizeBytes))
-                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .font(.system(size: 11, weight: .bold).monospacedDigit())
                                     .foregroundStyle(.white)
 
                                 Button {
@@ -733,14 +901,15 @@ struct NotchRootView: View {
                                         .foregroundStyle(item.isActiveBuild ? Color.white.opacity(0.25) : Color.white.opacity(0.85))
                                         .frame(width: 24, height: 24)
                                         .background(Circle().fill(Color.white.opacity(0.08)))
+                                        .contentShape(Circle())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
                                 .disabled(item.isActiveBuild || appState.isCleaning)
                                 .help(item.isActiveBuild ? "Compilación en uso: no se puede borrar" : "Borrar \(item.artifactKind)")
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.045)))
+                            .notchHoverRow(cornerRadius: 9, base: 0.045, hover: 0.095)
                         }
 
                         if appState.devArtifacts.count > devRowLimit {
@@ -750,13 +919,13 @@ struct NotchRootView: View {
                                 appState.onOpenMainWindow?()
                             } label: {
                                 Text("+\(appState.devArtifacts.count - devRowLimit) más · Ver todo en Dev Radar")
-                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                     .foregroundStyle(Color.white.opacity(0.55))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 4)
                                     .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(NotchButtonStyle(hoverScale: 1))
                         }
                 }
             }
@@ -768,8 +937,8 @@ struct NotchRootView: View {
     private var unusedTab: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(appState.unusedApps.isEmpty ? "APPS SIN USAR" : "\(appState.unusedApps.count) SIN USAR > \(appState.settings.unusedAppThresholdDays) DÍAS")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                Text(appState.unusedApps.isEmpty ? "Apps sin usar" : "\(appState.unusedApps.count) sin usar · más de \(appState.settings.unusedAppThresholdDays) días")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
                     .foregroundStyle(Color.white.opacity(0.65))
                 Spacer()
                 Button("Ver todas") {
@@ -793,7 +962,7 @@ struct NotchRootView: View {
                                 .font(.system(size: 13.5, weight: .semibold))
                                 .foregroundStyle(.white)
                             Text("\(ByteFormat.relativeAge(candidate.lastUsedDate)) · \(ByteFormat.compact(candidate.totalSizeBytes))")
-                                .font(.system(size: 10.5, design: .monospaced))
+                                .font(.system(size: 10.5).monospacedDigit())
                                 .foregroundStyle(Color.white.opacity(0.72))
                                 .lineLimit(2)
                         }
@@ -845,16 +1014,16 @@ struct NotchRootView: View {
 
     private var quickActionsTab: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-            quickActionTile("Analizar Mac", subtitle: "Dev + Basura + Apps", icon: "magnifyingglass") {
+            quickActionTile("Analizar Mac", subtitle: "Dev + Basura + Apps", icon: .smartcare) {
                 Task { await appState.runSmartScan() }
             }
-            quickActionTile("Optimizar RAM", subtitle: appState.isOptimizingRAM ? "Liberando…" : "Liberar caché inactiva", icon: "memorychip", isDisabled: appState.isOptimizingRAM) {
+            quickActionTile("Optimizar RAM", subtitle: appState.isOptimizingRAM ? "Liberando…" : "Liberar caché inactiva", icon: .memory, isDisabled: appState.isOptimizingRAM) {
                 Task { await appState.optimizeRAM() }
             }
             quickActionTile(
                 armedAction == "trash" ? "¿Vaciar ya?" : "Vaciar Papelera",
                 subtitle: trashSubtitle,
-                icon: "trash.slash",
+                icon: .trash,
                 isDisabled: appState.isCleaning,
                 isArmed: armedAction == "trash"
             ) {
@@ -862,10 +1031,10 @@ struct NotchRootView: View {
                     Task { await appState.emptyTrashNow() }
                 }
             }
-            quickActionTile("Limpiar GPU", subtitle: "Shaders Metal y WebGPU", icon: "sparkles", isDisabled: appState.isCleaning) {
+            quickActionTile("Limpiar GPU", subtitle: "Shaders Metal y WebGPU", icon: .gpu, isDisabled: appState.isCleaning) {
                 Task { await appState.trimGPUCaches() }
             }
-            quickActionTile("Mapa de Disco", subtitle: "Ver carpetas grandes", icon: "chart.pie") {
+            quickActionTile("Mapa de Disco", subtitle: "Ver carpetas grandes", icon: .diskmap) {
                 coordinator.isExpanded = false
                 appState.selectedSection = .diskMap
                 appState.onOpenMainWindow?()
@@ -873,7 +1042,7 @@ struct NotchRootView: View {
                     Task { await appState.mapDisk() }
                 }
             }
-            quickActionTile("Snapshots APFS", subtitle: "Reducir copias locales", icon: "clock.arrow.circlepath") {
+            quickActionTile("Snapshots APFS", subtitle: "Reducir copias locales", icon: .disk) {
                 Task { await appState.thinAPFSSnapshots() }
             }
         }
@@ -889,18 +1058,22 @@ struct NotchRootView: View {
     private func quickActionTile(
         _ title: String,
         subtitle: String,
-        icon: String,
+        icon: Icon3DName,
         isDisabled: Bool = false,
         isArmed: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(isArmed ? Mono.danger : Color.white.opacity(0.14)))
+                Icon3D(name: icon, size: 32)
+                    .overlay(alignment: .bottomTrailing) {
+                        if isArmed {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white, Mono.danger)
+                                .offset(x: 3, y: 3)
+                        }
+                    }
 
                 VStack(alignment: .leading, spacing: 1.5) {
                     Text(title)
@@ -908,7 +1081,7 @@ struct NotchRootView: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.system(size: 9.5, design: .monospaced))
+                        .font(.system(size: 9.5).monospacedDigit())
                         .foregroundStyle(Color.white.opacity(0.68))
                         .lineLimit(1)
                 }
@@ -916,26 +1089,12 @@ struct NotchRootView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 11).fill(Color(hex: 0x121212)))
-            .overlay(
-                RoundedRectangle(cornerRadius: 11)
-                    .strokeBorder(isArmed ? Mono.danger.opacity(0.8) : Color.white.opacity(0.14), lineWidth: 1)
-            )
+            .modifier(NotchCardHover(cornerRadius: 11, isArmed: isArmed, isEnabled: !isDisabled || isArmed))
             .contentShape(RoundedRectangle(cornerRadius: 11))
             .opacity(isDisabled && !isArmed ? 0.45 : 1)
         }
-        .buttonStyle(NotchPressStyle())
+        .buttonStyle(NotchButtonStyle(hoverScale: 1))
         .disabled(isDisabled && !isArmed)
-    }
-}
-
-/// Subtle press-down feedback for notch tiles.
-private struct NotchPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .brightness(configuration.isPressed ? 0.06 : 0)
-            .animation(Mono.fast, value: configuration.isPressed)
     }
 }
 
@@ -954,6 +1113,17 @@ private struct NotchTileChrome: ViewModifier {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(Color.white.opacity(hovering && onOpen != nil ? 0.28 : 0.14), lineWidth: 1)
             )
+            .background(alignment: .topLeading) {
+                if hovering && onOpen != nil {
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 90, height: 90)
+                        .blur(radius: 22)
+                        .offset(x: -16, y: -20)
+                        .allowsHitTesting(false)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .onHover { inside in
                 withAnimation(Mono.fast) { hovering = inside }

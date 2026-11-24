@@ -34,12 +34,14 @@ struct SystemJunkView: View {
 
     private var header: some View {
         HStack(alignment: .center) {
+            Icon3D(name: .trash, size: 58)
+                .padding(.trailing, 8)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Limpieza del Sistema")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 28, weight: .light))
                     .foregroundStyle(Mono.ink(scheme))
                 Text("Cachés, registros viejos e instaladores que macOS y tus apps regeneran solos.")
-                    .font(.system(size: 12))
+                    .font(.system(size: 13.5))
                     .foregroundStyle(Mono.muted(scheme))
             }
             Spacer()
@@ -103,7 +105,7 @@ struct SystemJunkView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(Mono.ink(scheme))
                 Text(trashDescription(trash))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                     .contentTransition(.numericText())
             }
@@ -177,7 +179,7 @@ struct SystemJunkView: View {
                     Spacer()
                     if !isEmpty {
                         Text("\(items.count)")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.system(size: 10, weight: .bold).monospacedDigit())
                     }
                 }
                 .foregroundStyle(isSelected ? Mono.primaryInk(scheme) : Mono.muted(scheme))
@@ -188,7 +190,7 @@ struct SystemJunkView: View {
                     .lineLimit(1)
 
                 Text(isEmpty ? (appState.isScanningJunk ? "…" : "Limpio") : ByteFormat.compact(bytes))
-                    .font(.system(size: 13.5, weight: .bold, design: .monospaced))
+                    .font(.system(size: 13.5, weight: .bold).monospacedDigit())
                     .foregroundStyle(isSelected ? Mono.primaryInk(scheme) : (isEmpty ? Mono.subtle(scheme) : Mono.ink(scheme)))
                     .contentTransition(.numericText())
             }
@@ -225,7 +227,7 @@ struct SystemJunkView: View {
                 .help("Quitar filtro")
             }
             Text("\(filtered.count) \(filtered.count == 1 ? "elemento" : "elementos") · \(ByteFormat.compact(selectedBytes)) seleccionados")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Mono.muted(scheme))
                 .contentTransition(.numericText())
             Spacer()
@@ -290,7 +292,7 @@ struct SystemJunkView: View {
                     MonoTag(text: item.category.title)
                 }
                 Text("\(item.reason) · \(item.path)")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -299,7 +301,7 @@ struct SystemJunkView: View {
             Spacer()
 
             Text(ByteFormat.compact(item.sizeBytes))
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold).monospacedDigit())
                 .foregroundStyle(Mono.ink(scheme))
 
             Button {

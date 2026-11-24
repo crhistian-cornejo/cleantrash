@@ -35,12 +35,14 @@ struct DiskMapView: View {
         VStack(alignment: .leading, spacing: 14) {
             // Header + Scan scope selector
             HStack(alignment: .center) {
+                Icon3D(name: .diskmap, size: 58)
+                    .padding(.trailing, 8)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Mapa de Disco")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 28, weight: .light))
                         .foregroundStyle(Mono.ink(scheme))
                     Text("Visualiza qué archivos y carpetas ocupan más espacio en tu Mac y limpia lo que ya no necesitas.")
-                        .font(.system(size: 12))
+                        .font(.system(size: 13.5))
                         .foregroundStyle(Mono.muted(scheme))
                 }
                 Spacer()
@@ -92,7 +94,7 @@ struct DiskMapView: View {
                     }
                 } label: {
                     Text(appState.diskRoot?.name ?? "Root")
-                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                         .foregroundStyle(navigationStack.isEmpty ? Mono.ink(scheme) : Mono.muted(scheme))
                 }
                 .buttonStyle(.plain)
@@ -107,7 +109,7 @@ struct DiskMapView: View {
                         }
                     } label: {
                         Text(node.name)
-                            .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                             .foregroundStyle(idx == navigationStack.count - 1 ? Mono.ink(scheme) : Mono.muted(scheme))
                     }
                     .buttonStyle(.plain)
@@ -121,7 +123,7 @@ struct DiskMapView: View {
                         .reduce(0 as UInt64) { $0 + $1.sizeBytes }
 
                     Text("\(ByteFormat.compact(current.sizeBytes)) · \(current.fileCount) archivos")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
                         .foregroundStyle(Mono.muted(scheme))
 
                     if cleanableBytes > 0 {
@@ -148,7 +150,7 @@ struct DiskMapView: View {
                     ProgressView()
                         .controlSize(.large)
                     Text("Midiendo bloques APFS… \(appState.diskScanCurrentFolder)")
-                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .font(.system(size: 13, weight: .medium).monospacedDigit())
                         .foregroundStyle(Mono.muted(scheme))
                     Spacer()
                 }
@@ -159,14 +161,14 @@ struct DiskMapView: View {
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("MAPA INTERACTIVO · CLIC PARA ENTRAR")
-                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            Text("Mapa interactivo · clic para entrar")
+                                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
                                 .foregroundStyle(Mono.muted(scheme))
                             Spacer()
                             if let hoveredID = hoveredNodeID,
                                let node = displayedChildren.first(where: { $0.id == hoveredID }) {
                                 Text("\(node.name) — \(ByteFormat.compact(node.sizeBytes))")
-                                    .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                                    .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
                                     .foregroundStyle(Mono.ink(scheme))
                             }
                         }
@@ -191,8 +193,8 @@ struct DiskMapView: View {
 
                     // Category Breakdown Donut (Swift Charts)
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("POR CATEGORÍA")
-                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        Text("Por categoría")
+                            .font(.system(size: 9.5, weight: .bold).monospacedDigit())
                             .foregroundStyle(Mono.muted(scheme))
 
                         Chart(Array(categoryBreakdown.enumerated()), id: \.element.category.id) { idx, item in
@@ -218,7 +220,7 @@ struct DiskMapView: View {
                                         .lineLimit(1)
                                     Spacer()
                                     Text(ByteFormat.compact(item.bytes))
-                                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                         .foregroundStyle(Mono.muted(scheme))
                                 }
                             }
@@ -287,12 +289,12 @@ struct DiskMapView: View {
             Spacer()
 
             Text(String(format: "%.1f%%", share * 100))
-                .font(.system(size: 10.5, design: .monospaced))
+                .font(.system(size: 10.5).monospacedDigit())
                 .foregroundStyle(Mono.muted(scheme))
                 .frame(width: 44, alignment: .trailing)
 
             Text(ByteFormat.compact(node.sizeBytes))
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold).monospacedDigit())
                 .foregroundStyle(Mono.ink(scheme))
                 .frame(width: 72, alignment: .trailing)
 
@@ -394,7 +396,7 @@ private struct MonochromeTreemap: View {
                                         .foregroundStyle(labelColor)
                                         .lineLimit(1)
                                     Text(ByteFormat.compact(item.node.sizeBytes))
-                                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                        .font(.system(size: 9.5, weight: .medium).monospacedDigit())
                                         .foregroundStyle(labelColor.opacity(0.75))
                                         .lineLimit(1)
                                 }

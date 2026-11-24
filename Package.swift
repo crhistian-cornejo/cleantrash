@@ -8,7 +8,8 @@ let package = Package(
     ],
     products: [
         .library(name: "CleanTrashCore", targets: ["CleanTrashCore"]),
-        .executable(name: "CleanTrash", targets: ["CleanTrashApp"])
+        .executable(name: "CleanTrash", targets: ["CleanTrashApp"]),
+        .executable(name: "cleantrash-hook", targets: ["CleanTrashHook"])
     ],
     targets: [
         .target(
@@ -32,6 +33,11 @@ let package = Package(
                 .linkedFramework("Charts"),
                 .linkedFramework("IOKit")
             ]
+        ),
+        .executableTarget(
+            name: "CleanTrashHook",
+            dependencies: ["CleanTrashCore"],
+            path: "Sources/CleanTrashHook"
         ),
         .testTarget(
             name: "CleanTrashCoreTests",

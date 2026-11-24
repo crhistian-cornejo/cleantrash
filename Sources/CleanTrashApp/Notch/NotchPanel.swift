@@ -64,8 +64,8 @@ final class NotchCoordinator {
 
     // Window stays at a fixed generous stage rect above the notch so SwiftUI spring animations
     // never fight AppKit frame resizing (same architectural principle as monoBOT's notch/mod.rs!).
-    let stageWidth: CGFloat = 530
-    let stageHeight: CGFloat = 430
+    let stageWidth: CGFloat = 580
+    let stageHeight: CGFloat = 460
 
     var closedWidth: CGFloat {
         geometry.hasHardwareNotch ? geometry.cameraWidth : 176
@@ -76,21 +76,29 @@ final class NotchCoordinator {
     }
 
     var isIsland = false
-    static let noticeWidth: CGFloat = 430
+    static let noticeWidth: CGFloat = 440
+    /// Open shelf width (content area is this minus 2 × `NotchRootView.sideInset`).
+    static let expandedWidth: CGFloat = 520
+    static let permissionWidth: CGFloat = 470
+    /// Each live ear beside the camera (metrics on the left, agents on the right).
+    static let earWidth: CGFloat = 158
 
-    func activeHitRect(in stageSize: CGSize, hasNotice: Bool, showEars: Bool) -> CGRect {
+    func activeHitRect(in stageSize: CGSize, hasNotice: Bool, hasPermission: Bool = false, showEars: Bool) -> CGRect {
         let width: CGFloat
         let height: CGFloat
         if isExpanded {
-            width = 492
+            width = Self.expandedWidth + 4
             let header = geometry.hasHardwareNotch && !isIsland ? max(closedHeight, 28) : 40
-            height = NotchRootView.expandedHeight(headerHeight: header, isIsland: isIsland)
+            height = NotchRootView.expandedHeight(headerHeight: header, isIsland: isIsland, showsStatus: detail == nil)
                 + (detail?.extraHeight ?? 0) + 6
+        } else if hasPermission {
+            width = Self.permissionWidth + 4
+            height = closedHeight + 142
         } else if hasNotice {
             width = Self.noticeWidth + 4
             height = closedHeight + 62
         } else if showEars {
-            width = closedWidth + 148
+            width = closedWidth + 2 * Self.earWidth + 4
             height = closedHeight + 4
         } else {
             width = closedWidth + 24
@@ -233,6 +241,7 @@ final class NotchWindowController {
         let hitRect = coordinator.activeHitRect(
             in: stageSize,
             hasNotice: appState.activeNotice != nil,
+            hasPermission: !appState.agents.pending.isEmpty,
             showEars: appState.settings.showLiveNotchEars
         )
         let inside = hitRect.insetBy(dx: -8, dy: -6).contains(localPoint)
@@ -243,10 +252,16 @@ final class NotchWindowController {
             panel.ignoresMouseEvents = !shouldAcceptMouse
         }
 
+        // A card with buttons (permission request, notice with an action) must stay put under the cursor:
+        // hovering it never auto-expands, and only a click on the camera strip opens the shelf.
+        let hasActionableToast = !coordinator.isExpanded
+            && (!appState.agents.pending.isEmpty || appState.activeNotice?.primaryActionTitle != nil)
+
         if isClick {
             if !inside && coordinator.isExpanded {
                 closeExpanded()
-            } else if inside && !coordinator.isExpanded && appState.settings.notchTrigger == .click {
+            } else if inside && !coordinator.isExpanded
+                        && (hasActionableToast ? localY <= coordinator.closedHeight + 2 : appState.settings.notchTrigger == .click) {
                 openDelayTask?.cancel()
                 closeDelayTask?.cancel()
                 withAnimation(Mono.openingSpring) {
@@ -262,7 +277,7 @@ final class NotchWindowController {
 
         if inside {
             closeDelayTask?.cancel()
-            if !coordinator.isExpanded {
+            if !coordinator.isExpanded && !hasActionableToast {
                 openDelayTask?.cancel()
                 openDelayTask = Task { @MainActor [weak self] in
                     // 90ms hover dwell (identical to monoBOT's OPEN_DELAY)
@@ -285,7 +300,7 @@ final class NotchWindowController {
                     withAnimation(Mono.foldingSpring) {
                         self.coordinator.isExpanded = false
                     }
-                    self.panel.ignoresMouseEvents = self.appState.activeNotice == nil
+                    self.panel.ignoresMouseEvents = self.appState.activeNotice == nil && self.appState.agents.pending.isEmpty
                 }
             }
         }

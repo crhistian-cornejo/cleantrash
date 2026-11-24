@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let notch = NotchWindowController(appState: appState)
         self.notchController = notch
 
+        appState.agents.canPrompt = { [weak appState] in appState?.settings.notchEnabled ?? false }
+        appState.agents.start()
+
         appState.onSettingsChanged = { [weak notch] settings in
             notch?.applySettings(settings)
         }
@@ -120,6 +123,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showMainWindow()
         }
         return true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Waiting hooks get "ask" so the agents fall back to their own prompt.
+        appState.agents.stop()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -20,7 +20,7 @@ final class MenuBarController: NSObject {
         self.appState = appState
         self.onOpenDashboard = onOpenDashboard
         self.onToggleNotch = onToggleNotch
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
         configureButton()
@@ -38,7 +38,7 @@ final class MenuBarController: NSObject {
         if let symbol = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "CleanTrash") {
             symbol.isTemplate = true
             button.image = symbol
-            button.imagePosition = .imageLeading
+            button.imagePosition = .imageOnly
         }
         updateTitle()
     }
@@ -47,10 +47,9 @@ final class MenuBarController: NSObject {
         guard let button = statusItem.button else { return }
         let ram = Int(appState.telemetry.memory.usedPercent)
         let gpu = Int(appState.telemetry.gpu.deviceUtilizationPercent)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        ]
-        button.attributedTitle = NSAttributedString(string: " \(ram)%·\(gpu)%", attributes: attrs)
+        // Icon only: the live numbers already live in the notch, so they go in the tooltip here.
+        button.title = ""
+        button.toolTip = "CleanTrash · RAM \(ram)% · GPU \(gpu)%"
     }
 
     private func rebuildMenu() {
@@ -115,7 +114,7 @@ extension MenuBarController: NSMenuDelegate {
         menu.addItem(header)
 
         let diskInfo = NSMenuItem(
-            title: "\(t.disk.volumeName): \(ByteFormat.compact(t.disk.availableBytes)) free · \(ByteFormat.compact(appState.totalSmartReclaimableBytes)) reclaimable",
+            title: "\(t.disk.volumeName): \(ByteFormat.compact(t.disk.availableBytes)) libres · \(ByteFormat.compact(appState.totalSmartReclaimableBytes)) recuperables",
             action: nil,
             keyEquivalent: ""
         )

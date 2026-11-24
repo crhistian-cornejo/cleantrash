@@ -11,12 +11,14 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 // Header
                 HStack(alignment: .center) {
+                    Icon3D(name: .settings, size: 58)
+                        .padding(.trailing, 8)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Ajustes")
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 28, weight: .light))
                             .foregroundStyle(Mono.ink(scheme))
                         Text("Controla cómo limpia CleanTrash, el aspecto del Notch y las alertas automáticas.")
-                            .font(.system(size: 12))
+                            .font(.system(size: 13.5))
                             .foregroundStyle(Mono.muted(scheme))
                     }
                     Spacer()
@@ -30,7 +32,7 @@ struct SettingsView: View {
                 }
 
                 // 1. Modo de eliminación (Directo vs Papelera)
-                settingsCard(title: "ELIMINACIÓN Y DISCO", icon: "trash") {
+                settingsCard(title: "Eliminación y disco", icon: "trash") {
                     VStack(spacing: 0) {
                         HStack(alignment: .center) {
                             rowLabel(
@@ -76,7 +78,7 @@ struct SettingsView: View {
                 }
 
                 // 2. Dynamic Notch y Apariencia
-                settingsCard(title: "NOTCH Y APARIENCIA", icon: "rectangle.topthird.inset.filled") {
+                settingsCard(title: "Notch y apariencia", icon: "rectangle.topthird.inset.filled") {
                     VStack(spacing: 0) {
                         toggleRow(
                             title: "Activar Dynamic Notch",
@@ -132,7 +134,31 @@ struct SettingsView: View {
                 }
 
                 // 3. Automatización inteligente
-                settingsCard(title: "AUTOMATIZACIÓN EN SEGUNDO PLANO", icon: "bolt.badge.automatic") {
+                settingsCard(title: "Agentes de IA en el notch", icon: "sparkles") {
+                    VStack(spacing: 0) {
+                        ForEach(Array(AgentSource.allCases.enumerated()), id: \.element) { index, source in
+                            if index > 0 { divider }
+                            toggleRow(
+                                title: source.displayName,
+                                subtitle: agentSubtitle(source),
+                                isOn: Binding(
+                                    get: { appState.agents.installed[source] ?? false },
+                                    set: { appState.agents.setIntegration(source, enabled: $0) }
+                                )
+                            )
+                            .disabled(appState.agents.present[source] != true && appState.agents.installed[source] != true)
+                        }
+                        if let error = appState.agents.lastError {
+                            Text(error)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Mono.danger)
+                                .padding(.bottom, 8)
+                        }
+                    }
+                }
+                .onAppear { appState.agents.refreshInstallState() }
+
+                settingsCard(title: "Automatización en segundo plano", icon: "bolt.badge.automatic") {
                     VStack(spacing: 0) {
                         toggleRow(
                             title: "Abrir CleanTrash al iniciar sesión en macOS",
@@ -176,7 +202,7 @@ struct SettingsView: View {
                                 Slider(value: $appState.settings.autoCleanMinFreeGB, in: 10...120, step: 5)
                                     .frame(width: 170)
                                 Text("\(Int(appState.settings.autoCleanMinFreeGB)) GB")
-                                    .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                    .font(.system(size: 11.5, weight: .bold).monospacedDigit())
                                     .frame(width: 52, alignment: .trailing)
                             }
                             .padding(.bottom, 10)
@@ -192,7 +218,7 @@ struct SettingsView: View {
                             Slider(value: $appState.settings.devAlertThresholdGB, in: 0.5...20.0, step: 0.5)
                                 .frame(width: 160)
                             Text(String(format: "%.1f GB", appState.settings.devAlertThresholdGB))
-                                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .bold).monospacedDigit())
                                 .frame(width: 54, alignment: .trailing)
                         }
                         .padding(.vertical, 10)
@@ -205,14 +231,14 @@ struct SettingsView: View {
                             )
                             Spacer()
                             Stepper("\(appState.settings.unusedAppThresholdDays) días", value: $appState.settings.unusedAppThresholdDays, in: 14...180, step: 15)
-                                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                                .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                         }
                         .padding(.vertical, 10)
                     }
                 }
 
                 // 4. Carpetas vigiladas (Dev Radar)
-                settingsCard(title: "CARPETAS DE CÓDIGO VIGILADAS", icon: "folder.badge.gearshape") {
+                settingsCard(title: "Carpetas de código vigiladas", icon: "folder.badge.gearshape") {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("CleanTrash vigila estas carpetas en tiempo real para detectar target/, node_modules/ y .build/.")
@@ -230,7 +256,7 @@ struct SettingsView: View {
                                     .font(.system(size: 12))
                                     .foregroundStyle(Mono.muted(scheme))
                                 Text(folder.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                                    .font(.system(size: 12, design: .monospaced))
+                                    .font(.system(size: 12).monospacedDigit())
                                     .foregroundStyle(Mono.ink(scheme))
                                 Spacer()
                                 Button {
@@ -289,8 +315,7 @@ struct SettingsView: View {
                 Image(systemName: icon)
                     .font(.system(size: 10.5, weight: .bold))
                 Text(title)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .tracking(0.8)
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
             }
             .foregroundStyle(Mono.muted(scheme))
 
@@ -322,6 +347,20 @@ struct SettingsView: View {
                 .controlSize(.small)
         }
         .padding(.vertical, 10)
+    }
+
+    private func agentSubtitle(_ source: AgentSource) -> String {
+        if appState.agents.present[source] != true && appState.agents.installed[source] != true {
+            return "No está instalado en este Mac."
+        }
+        switch source {
+        case .claude:
+            return "Actividad y solicitudes de permiso (Permitir / Denegar) desde el notch. Incluye los hilos de Claude en T3 Code."
+        case .codex:
+            return "Actividad y permisos de Codex, también los hilos de Codex en T3 Code. Codex pedirá confiar en el hook la primera vez."
+        case .antigravity:
+            return "Muestra qué herramienta usa y cuándo termina. Sus permisos se siguen respondiendo en Antigravity."
+        }
     }
 
     private var divider: some View {

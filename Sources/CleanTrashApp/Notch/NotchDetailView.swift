@@ -45,7 +45,7 @@ struct NotchDetailView: View {
 
     // MARK: - Shared chrome
 
-    private func header(icon: String, title: String, value: String, valueTint: Color = .white, @ViewBuilder trailing: () -> some View) -> some View {
+    private func header(icon: Icon3DName, title: String, value: String, valueTint: Color = .white, @ViewBuilder trailing: () -> some View) -> some View {
         HStack(spacing: 8) {
             Button {
                 withAnimation(reduceMotion ? .none : Mono.betweenSpring) { coordinator.detail = nil }
@@ -57,20 +57,17 @@ struct NotchDetailView: View {
                     .background(Circle().fill(Color.white.opacity(0.1)))
                     .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
             .help("Volver")
 
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.7))
+            Icon3D(name: icon, size: 30)
             Text(title)
-                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                .tracking(0.6)
-                .foregroundStyle(Color.white.opacity(0.75))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.9))
                 .lineLimit(1)
 
             Text(value)
-                .font(.system(size: 17, weight: .bold, design: .monospaced))
+                .font(.system(size: 18, weight: .semibold).monospacedDigit())
                 .foregroundStyle(valueTint)
                 .contentTransition(.numericText())
                 .lineLimit(1)
@@ -97,7 +94,7 @@ struct NotchDetailView: View {
                 .contentShape(Capsule())
                 .contentTransition(.interpolate)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotchButtonStyle())
         .disabled(disabled && !armed)
         .opacity(disabled && !armed ? 0.4 : 1)
     }
@@ -142,11 +139,11 @@ struct NotchDetailView: View {
     private func stat(_ label: String, _ value: String, tint: Color = .white) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.5))
                 .lineLimit(1)
             Text(value)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold).monospacedDigit())
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -185,7 +182,7 @@ struct NotchDetailView: View {
                 }
 
             Text(metric)
-                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                 .foregroundStyle(.white)
                 .frame(width: 52, alignment: .trailing)
                 .contentTransition(.numericText())
@@ -203,7 +200,7 @@ struct NotchDetailView: View {
                         .background(Capsule().fill(armedAction == "kill-\(p.pid)" ? Mono.danger : Color.white.opacity(0.08)))
                         .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
                 .help(armedAction == "kill-\(p.pid)" ? "Toca otra vez para forzar el cierre" : "Forzar cierre de \(p.name)")
             } else {
                 Image(systemName: "lock.fill")
@@ -215,14 +212,13 @@ struct NotchDetailView: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 28)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(0.04)))
+        .notchHoverRow(cornerRadius: 7)
         .transition(.opacity.combined(with: .move(edge: .leading)))
     }
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
-            .tracking(0.6)
+            .font(.system(size: 10.5, weight: .semibold))
             .foregroundStyle(Color.white.opacity(0.45))
     }
 
@@ -236,7 +232,7 @@ struct NotchDetailView: View {
         let maxCPU = Double(max(1, t.coreCount)) * 100
 
         return VStack(alignment: .leading, spacing: 9) {
-            header(icon: "cpu", title: "CPU", value: "\(Int(t.cpuTotalPercent))%",
+            header(icon: .cpu, title: "CPU", value: "\(Int(t.cpuTotalPercent))%",
                    valueTint: t.cpuTotalPercent >= 85 ? Mono.danger : .white) {
                 if !heavy.isEmpty {
                     pillButton("Cerrar \(heavy.count) pesada\(heavy.count == 1 ? "" : "s")", key: "killHeavy", destructive: true) {
@@ -250,17 +246,17 @@ struct NotchDetailView: View {
             historyChart(\.cpu, tint: t.cpuTotalPercent >= 85 ? Mono.danger : .white)
 
             HStack(spacing: 6) {
-                stat("USUARIO", "\(Int(t.cpuUserPercent))%")
-                stat("SISTEMA", "\(Int(t.cpuSystemPercent))%", tint: t.cpuSystemPercent >= 50 ? Mono.caution : .white)
-                stat("CARGA", String(format: "%.0f", t.loadAverage), tint: appState.isCPUOverloaded ? Mono.danger : .white)
-                stat("PROCESOS", "\(t.processCount)")
+                stat("Usuario", "\(Int(t.cpuUserPercent))%")
+                stat("Sistema", "\(Int(t.cpuSystemPercent))%", tint: t.cpuSystemPercent >= 50 ? Mono.caution : .white)
+                stat("Carga", String(format: "%.0f", t.loadAverage), tint: appState.isCPUOverloaded ? Mono.danger : .white)
+                stat("Procesos", "\(t.processCount)")
             }
 
             if showSim {
                 simulatorBanner(sim)
             }
 
-            sectionLabel(rows.isEmpty ? "SIN PROCESOS ACTIVOS" : "MÁS CPU · 100% = 1 NÚCLEO")
+            sectionLabel(rows.isEmpty ? "Sin procesos activos" : "Más CPU · 100% = 1 núcleo")
             VStack(spacing: 4) {
                 ForEach(rows) { p in
                     processRow(p, metric: "\(Int(p.cpuPercent))%", fraction: p.cpuPercent / min(maxCPU, 100))
@@ -285,7 +281,7 @@ struct NotchDetailView: View {
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text("\(Int(sim.cpuPercent))% CPU · \(sim.processCount) procesos · \(ByteFormat.memory(sim.memoryBytes))")
-                    .font(.system(size: 9.5, design: .monospaced))
+                    .font(.system(size: 9.5).monospacedDigit())
                     .foregroundStyle(Color.white.opacity(0.6))
                     .lineLimit(1)
                     .help(appState.bootedSimulators.map(\.name).joined(separator: ", "))
@@ -318,7 +314,7 @@ struct NotchDetailView: View {
         let pressureTint: Color = m.pressure == .normal ? Mono.healthy : (m.pressure == .critical ? Mono.danger : Mono.caution)
 
         return VStack(alignment: .leading, spacing: 9) {
-            header(icon: "memorychip", title: "MEMORIA", value: "\(Int(m.usedPercent))%", valueTint: m.usedPercent >= 88 ? Mono.caution : .white) {
+            header(icon: .memory, title: "Memoria", value: "\(Int(m.usedPercent))%", valueTint: m.usedPercent >= 88 ? Mono.caution : .white) {
                 pillButton(appState.isOptimizingRAM ? "Liberando…" : "Optimizar", disabled: appState.isOptimizingRAM) {
                     Task { await appState.optimizeRAM() }
                 }
@@ -344,7 +340,7 @@ struct NotchDetailView: View {
                         HStack(spacing: 4) {
                             Circle().fill(seg.2).frame(width: 6, height: 6)
                             Text("\(seg.0) \(ByteFormat.memory(seg.1))")
-                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .font(.system(size: 9, weight: .medium).monospacedDigit())
                                 .foregroundStyle(Color.white.opacity(0.7))
                                 .lineLimit(1)
                         }
@@ -353,16 +349,16 @@ struct NotchDetailView: View {
             }
 
             HStack(spacing: 6) {
-                stat("PRESIÓN", m.pressure.label, tint: pressureTint)
-                stat("EN USO", "\(ByteFormat.memory(m.usedBytes))")
-                stat("SWAP", ByteFormat.memory(m.swapUsedBytes), tint: m.swapUsedBytes > 2_000_000_000 ? Mono.caution : .white)
+                stat("Presión", m.pressure.label, tint: pressureTint)
+                stat("En uso", "\(ByteFormat.memory(m.usedBytes))")
+                stat("Swap", ByteFormat.memory(m.swapUsedBytes), tint: m.swapUsedBytes > 2_000_000_000 ? Mono.caution : .white)
             }
 
             if showSim {
                 simulatorBanner(sim)
             }
 
-            sectionLabel("MÁS MEMORIA")
+            sectionLabel("Más memoria")
             VStack(spacing: 4) {
                 ForEach(rows) { p in
                     processRow(p, metric: ByteFormat.memory(p.memoryBytes), fraction: Double(p.memoryBytes) / total * 4)
@@ -378,7 +374,7 @@ struct NotchDetailView: View {
         let g = t.gpu
         let simHeavy = t.simulatorLoad.processCount > 0
         return VStack(alignment: .leading, spacing: 9) {
-            header(icon: "cpu.fill", title: "GPU · \(g.modelName.uppercased())", value: "\(Int(g.deviceUtilizationPercent))%") {
+            header(icon: .gpu, title: "GPU · \(g.modelName)", value: "\(Int(g.deviceUtilizationPercent))%") {
                 pillButton(appState.isCleaning ? "Limpiando…" : "Limpiar cachés", disabled: appState.isCleaning) {
                     Task { await appState.trimGPUCaches() }
                 }
@@ -387,10 +383,10 @@ struct NotchDetailView: View {
             historyChart(\.gpu)
 
             HStack(spacing: 6) {
-                stat("RENDER", "\(Int(g.rendererUtilizationPercent))%")
-                stat("TILER", "\(Int(g.tilerUtilizationPercent))%")
-                stat("EN USO", ByteFormat.memory(g.inUseMemoryBytes))
-                stat("ASIGNADA", ByteFormat.memory(g.allocatedMemoryBytes))
+                stat("Render", "\(Int(g.rendererUtilizationPercent))%")
+                stat("Tiler", "\(Int(g.tilerUtilizationPercent))%")
+                stat("En uso", ByteFormat.memory(g.inUseMemoryBytes))
+                stat("Asignada", ByteFormat.memory(g.allocatedMemoryBytes))
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -431,7 +427,7 @@ struct NotchDetailView: View {
         let other = used > junk ? used - junk : 0
 
         return VStack(alignment: .leading, spacing: 9) {
-            header(icon: "internaldrive", title: d.volumeName.uppercased(), value: ByteFormat.compact(d.availableBytes)) {
+            header(icon: .disk, title: d.volumeName, value: ByteFormat.compact(d.availableBytes)) {
                 pillButton("Ver mapa") {
                     coordinator.isExpanded = false
                     appState.selectedSection = .diskMap
@@ -459,7 +455,7 @@ struct NotchDetailView: View {
             }
             .padding(.top, 2)
 
-            sectionLabel("LO QUE PUEDES LIBERAR")
+            sectionLabel("Lo que puedes liberar")
             VStack(spacing: 5) {
                 diskRow(icon: "terminal", title: "Proyectos (build, node_modules…)", bytes: appState.reclaimableDevBytes, actionTitle: "Limpiar", key: "disk-dev") {
                     Task { await appState.cleanSelectedDevArtifacts() }
@@ -486,7 +482,7 @@ struct NotchDetailView: View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 6, height: 6)
             Text(text)
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.system(size: 9, weight: .medium).monospacedDigit())
                 .foregroundStyle(Color.white.opacity(0.7))
                 .lineLimit(1)
         }
@@ -511,13 +507,23 @@ struct NotchDetailView: View {
                     .padding(.horizontal, 6)
             } else {
                 Text(bytes > 0 ? ByteFormat.compact(bytes) : "?")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.system(size: 11, weight: .bold).monospacedDigit())
                     .foregroundStyle(.white)
                 pillButton(actionTitle, key: key, disabled: appState.isCleaning, action: action)
             }
         }
         .padding(.horizontal, 9)
         .frame(height: 32)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.04)))
+        .notchHoverRow(cornerRadius: 8)
+    }
+}
+
+extension MacHealth.Area {
+    var notchDetail: NotchDetail {
+        switch self {
+        case .memory: return .memory
+        case .cpu: return .cpu
+        case .disk: return .disk
+        }
     }
 }

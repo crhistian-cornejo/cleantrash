@@ -3,6 +3,9 @@ import SwiftUI
 /// High-contrast Monochrome Black & White design system inspired by monoBOT's precision visual language
 /// and tuned for macOS 27 Liquid Glass + crisp tabular telemetry.
 enum Mono {
+    /// Debug snapshots: ImageRenderer can't draw Liquid Glass, so cards fall back to flat fills.
+    nonisolated(unsafe) static var snapshotMode = false
+
     // MARK: - Surface Palette (Crisp High-Contrast Monochrome)
 
     static func canvas(_ scheme: ColorScheme) -> Color {
@@ -91,7 +94,7 @@ struct MonoCardModifier: ViewModifier {
     var useGlass: Bool = false
 
     func body(content: Content) -> some View {
-        if useGlass, #available(macOS 26.0, *) {
+        if useGlass, !Mono.snapshotMode, #available(macOS 26.0, *) {
             content
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -189,7 +192,7 @@ struct MonoTag: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .font(.system(size: 10, weight: .semibold).monospacedDigit())
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(inverted ? Mono.primaryInk(scheme) : Mono.ink(scheme).opacity(0.84))

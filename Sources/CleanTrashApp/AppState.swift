@@ -50,6 +50,18 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .settings: return "slider.horizontal.3"
         }
     }
+
+    var icon3D: Icon3DName {
+        switch self {
+        case .overview: return .smartcare
+        case .devRadar: return .dev
+        case .diskMap: return .diskmap
+        case .systemJunk: return .trash
+        case .appsAudit: return .apps
+        case .performance: return .performance
+        case .settings: return .settings
+        }
+    }
 }
 
 @MainActor
@@ -91,6 +103,9 @@ final class AppState {
     var isShuttingDownSimulators = false
     /// PIDs we just asked to quit; hidden from lists until the next scan confirms they are gone.
     var quittingPIDs: Set<Int32> = []
+
+    // Coding agents (Claude Code, Codex, Antigravity, T3 Code) reporting through hooks
+    let agents = AgentMonitor()
 
     // Notch Live Notices
     var activeNotice: NotchNotice?
@@ -332,6 +347,33 @@ final class AppState {
         await refreshSnapshots()
         await scanSystemJunk()
         await auditApplications()
+        await checkWallpaper()
+    }
+
+    // MARK: - Wallpaper health
+
+    /// Desktops render black when their wallpaper image was deleted (or purged from macOS's temp folder).
+    func checkWallpaper() async {
+        let health = await Task.detached(priority: .utility) { WallpaperDoctor().diagnose() }.value
+        guard health.isBroken, health.replacementPath != nil else { return }
+        postNotice(NotchNotice(
+            kind: .warning,
+            title: "Fondo de pantalla en negro",
+            subtitle: "\(health.brokenCount) escritorios apuntan a imágenes borradas",
+            primaryActionTitle: "Reparar",
+            targetPath: "wallpaper"
+        ), autoDismissAfter: 20)
+    }
+
+    func repairWallpaper() async {
+        do {
+            let fixed = try await Task.detached(priority: .userInitiated) { try WallpaperDoctor().repair() }.value
+            if fixed > 0 {
+                postNotice(NotchNotice(kind: .cleaned, title: "Fondo reparado", subtitle: "\(fixed) escritorios vuelven a tener imagen"))
+            }
+        } catch {
+            report("No se pudo reparar el fondo: \(error.localizedDescription)", tone: .error)
+        }
     }
 
     func runSmartScan() async {
@@ -341,6 +383,7 @@ final class AppState {
             group.addTask { await self.scanSystemJunk() }
             group.addTask { await self.auditApplications() }
             group.addTask { await self.refreshSnapshots() }
+            group.addTask { await self.checkWallpaper() }
         }
         report(totalSmartReclaimableBytes > 0
             ? "Análisis completo · \(ByteFormat.compact(totalSmartReclaimableBytes)) listos para liberar"
@@ -802,6 +845,42 @@ final class AppState {
         telemetry.loadAverage > Double(telemetry.coreCount) * 2 || telemetry.cpuTotalPercent >= 90
     }
 
+    /// One-line verdict for the "Estado del Mac" header: worst signal wins, with the reason that caused it.
+    var macHealth: MacHealth {
+        var issues: [(level: MacHealth.Level, reason: String, area: MacHealth.Area)] = []
+        let t = telemetry
+        let cores = Double(max(1, t.coreCount))
+
+        switch t.memory.pressure {
+        case .critical: issues.append((.critical, "Memoria al límite", .memory))
+        case .warning: issues.append((.attention, "Memoria con presión alta", .memory))
+        default: break
+        }
+        if t.loadAverage > cores * 6 || t.cpuTotalPercent >= 97 {
+            issues.append((.critical, "CPU saturada · carga \(Int(t.loadAverage))", .cpu))
+        } else if isCPUOverloaded {
+            issues.append((.attention, "CPU muy ocupada · carga \(Int(t.loadAverage))", .cpu))
+        }
+        if t.simulatorLoad.cpuPercent >= 150 {
+            issues.append((.attention, "\(Int(t.simulatorLoad.cpuPercent))% de CPU en simuladores iOS", .cpu))
+        }
+        let freeRatio = t.disk.totalBytes > 0 ? Double(t.disk.availableBytes) / Double(t.disk.totalBytes) : 1
+        if freeRatio < 0.05 {
+            issues.append((.critical, "Disco casi lleno", .disk))
+        } else if freeRatio < 0.10 {
+            issues.append((.attention, "Poco espacio libre", .disk))
+        }
+        switch t.thermalState {
+        case "Crítica": issues.append((.critical, "Temperatura crítica", .cpu))
+        case "Caliente": issues.append((.attention, "Mac caliente", .cpu))
+        default: break
+        }
+
+        let worst = issues.map(\.level).max() ?? .good
+        let top = issues.first { $0.level == worst }
+        return MacHealth(level: worst, reason: top?.reason, area: top?.area, issueCount: issues.count)
+    }
+
     /// Force-quits processes (SIGKILL / forceTerminate) and reports what really died.
     func forceQuit(_ processes: [ProcessSample], graceful: Bool = false) async {
         let targets = processes.filter(\.isKillable)
@@ -945,6 +1024,8 @@ final class AppState {
             case .unusedApp:
                 selectedSection = .appsAudit
                 onOpenMainWindow?()
+            case .warning where notice.targetPath == "wallpaper":
+                await repairWallpaper()
             case .cleaned, .warning, .failed:
                 break
             }

@@ -27,12 +27,14 @@ struct AppsAuditView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
+                Icon3D(name: .apps, size: 58)
+                    .padding(.trailing, 8)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Apps y programas sin usar")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 28, weight: .light))
                         .foregroundStyle(Mono.ink(scheme))
                     Text("Elimina apps completas y sus archivos ocultos en un clic, solo confirmando con tu huella.")
-                        .font(.system(size: 12))
+                        .font(.system(size: 13.5))
                         .foregroundStyle(Mono.muted(scheme))
                 }
                 Spacer()
@@ -56,7 +58,7 @@ struct AppsAuditView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
                             MonoTag(text: "¿AÚN LA USAS?", inverted: true)
-                            MonoTag(text: ByteFormat.relativeAge(topUnused.lastUsedDate).uppercased())
+                            MonoTag(text: ByteFormat.relativeAge(topUnused.lastUsedDate))
                         }
                         Text(topUnused.name)
                             .font(.system(size: 17, weight: .bold))
@@ -193,7 +195,7 @@ struct AppsAuditView: View {
                         Spacer()
 
                         Text(ByteFormat.compact(app.totalSizeBytes))
-                            .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12.5, weight: .bold).monospacedDigit())
                             .foregroundStyle(Mono.ink(scheme))
 
                         if app.isUnused(thresholdDays: appState.settings.unusedAppThresholdDays) {
@@ -267,14 +269,14 @@ struct AppsAuditView: View {
                                         MonoTag(text: item.location)
                                     }
                                     Text(item.path)
-                                        .font(.system(size: 10, design: .monospaced))
+                                        .font(.system(size: 10).monospacedDigit())
                                         .foregroundStyle(Mono.muted(scheme))
                                         .lineLimit(1)
                                         .truncationMode(.middle)
                                 }
                                 Spacer()
                                 Text(ByteFormat.compact(item.sizeBytes))
-                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .font(.system(size: 12, weight: .bold).monospacedDigit())
                                     .foregroundStyle(Mono.ink(scheme))
                             }
                             .padding(.horizontal, 14)
@@ -321,7 +323,7 @@ private struct AppDeepUninstallSheet: View {
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(Mono.ink(scheme))
                     Text("\(app.bundleID) · \(appState.settings.useTrashByDefault ? "Mueve la app y los archivos marcados a la Papelera" : "Borra la app y los archivos marcados")")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: 11).monospacedDigit())
                         .foregroundStyle(Mono.muted(scheme))
                 }
                 Spacer()
@@ -331,18 +333,18 @@ private struct AppDeepUninstallSheet: View {
             HStack {
                 Image(systemName: "app.fill")
                 Text(app.appPath)
-                    .font(.system(size: 11.5, design: .monospaced))
+                    .font(.system(size: 11.5).monospacedDigit())
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
                 Text(ByteFormat.compact(app.bundleSizeBytes))
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold).monospacedDigit())
             }
             .padding(11)
             .monoCard(radius: 10)
 
-            Text("ARCHIVOS ASOCIADOS (\(app.relatedFiles.count))")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+            Text("Archivos asociados (\(app.relatedFiles.count))")
+                .font(.system(size: 10, weight: .bold).monospacedDigit())
                 .foregroundStyle(Mono.muted(scheme))
 
             ScrollView {
@@ -366,13 +368,13 @@ private struct AppDeepUninstallSheet: View {
 
                                 MonoTag(text: file.kind.rawValue)
                                 Text(file.path)
-                                    .font(.system(size: 10.5, design: .monospaced))
+                                    .font(.system(size: 10.5).monospacedDigit())
                                     .foregroundStyle(Mono.muted(scheme))
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 Spacer()
                                 Text(ByteFormat.compact(file.sizeBytes))
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
                                     .foregroundStyle(Mono.ink(scheme))
                             }
                             .padding(.horizontal, 10)

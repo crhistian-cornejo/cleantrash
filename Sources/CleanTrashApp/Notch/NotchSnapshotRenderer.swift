@@ -13,6 +13,8 @@ enum NotchSnapshotRenderer {
             try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
 
             let coordinator = NotchCoordinator()
+            appState.agents.injectPreview()
+            appState.agents.clearPreviewPending()
             coordinator.isExpanded = true
             for tab in NotchTab.allCases {
                 write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: tab), name: "expanded-\(tab.rawValue)", dir: dir)
@@ -30,12 +32,34 @@ enum NotchSnapshotRenderer {
                 screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
                 hasHardwareNotch: true, cameraWidth: 185, cameraHeight: 32, menuBarHeight: 32
             )
-            write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: .unused), name: "expanded-notch-wings", dir: dir)
+            write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: .vitals), name: "expanded-notch-wings", dir: dir)
+
+            Mono.snapshotMode = true
+            for scheme in [ColorScheme.dark, .light] {
+                write(
+                    OverviewView(appState: appState).headerHero
+                        .frame(width: 900)
+                        .padding(20)
+                        .background(Mono.canvas(scheme))
+                        .environment(\.colorScheme, scheme),
+                    name: "overview-hero-\(scheme == .dark ? "dark" : "light")", dir: dir
+                )
+            }
 
             coordinator.isExpanded = false
+            appState.activeNotice = nil
+            for _ in 0..<60 where appState.activityLabel != nil { try? await Task.sleep(for: .seconds(1)) }
             write(NotchRootView(appState: appState, coordinator: coordinator), name: "closed", dir: dir)
+            appState.agents.previewDone()
+            write(NotchRootView(appState: appState, coordinator: coordinator), name: "closed-done", dir: dir)
             appState.activeNotice = NotchNotice(kind: .cleaned, title: "Papelera vaciada", subtitle: "271 MB liberados")
             write(NotchRootView(appState: appState, coordinator: coordinator), name: "notice", dir: dir)
+            appState.activeNotice = NotchNotice(kind: .heavyCPU, title: "Simuladores al 744% de CPU", subtitle: "4 iOS encendidos · 9.3 GB", primaryActionTitle: "Apagar")
+            write(NotchRootView(appState: appState, coordinator: coordinator), name: "notice-cpu", dir: dir)
+            appState.agents.injectPreview()
+            write(NotchRootView(appState: appState, coordinator: coordinator), name: "agent-permission", dir: dir)
+            coordinator.isExpanded = true
+            write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: .agents), name: "expanded-agents-pending", dir: dir)
             NSApp.terminate(nil)
         }
     }
