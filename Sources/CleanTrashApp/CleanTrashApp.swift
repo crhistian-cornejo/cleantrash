@@ -19,6 +19,7 @@ struct CleanTrashApplication: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let appState = AppState()
     private var notchController: NotchWindowController?
+    private var mascotController: AgentMascotWindowController?
     private var menuBarController: MenuBarController?
     private var mainWindow: NSWindow?
 
@@ -35,15 +36,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let notch = NotchWindowController(appState: appState)
         self.notchController = notch
 
+        let mascot = AgentMascotWindowController()
+        self.mascotController = mascot
+        if appState.settings.agentMascotEnabled {
+            mascot.show(appState: appState)
+        }
+
         appState.agents.canPrompt = { [weak appState] in appState?.settings.notchEnabled ?? false }
         appState.agents.start()
 
-        appState.onSettingsChanged = { [weak notch] settings in
+        appState.onSettingsChanged = { [weak self, weak notch, weak mascot] settings in
             notch?.applySettings(settings)
+            if let appState = self?.appState {
+                mascot?.setVisible(settings.agentMascotEnabled, appState: appState)
+            }
         }
 
         appState.onOpenMainWindow = { [weak self] in
             self?.showMainWindow()
+        }
+        appState.onOpenNotchVault = { [weak self] in
+            self?.openNotchVaultShortcut()
         }
 
         self.menuBarController = MenuBarController(
@@ -56,7 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
-        showMainWindow()
+        if !ProcessInfo.processInfo.arguments.contains("--background") {
+            showMainWindow()
+        }
         installAppMenuShortcuts()
     }
 
@@ -72,6 +87,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let toggleNotch = NSMenuItem(title: "Mostrar / Ocultar Notch", action: #selector(toggleNotchShortcut), keyEquivalent: "n")
         toggleNotch.target = self
         actionsMenu.addItem(toggleNotch)
+
+        let quickTranslate = NSMenuItem(title: "Traductor rápido (En este Mac)", action: #selector(toggleQuickTranslateShortcut), keyEquivalent: "t")
+        quickTranslate.keyEquivalentModifierMask = [.option, .shift]
+        quickTranslate.target = self
+        actionsMenu.addItem(quickTranslate)
+
+        let toggleMascot = NSMenuItem(title: "Mascota de Agentes IA", action: #selector(toggleMascotShortcut), keyEquivalent: "m")
+        toggleMascot.keyEquivalentModifierMask = [.option, .shift]
+        toggleMascot.target = self
+        actionsMenu.addItem(toggleMascot)
+
+        let vaultQuickFill = NSMenuItem(title: "Bóveda en el Notch (Autocompletar)", action: #selector(openNotchVaultShortcut), keyEquivalent: "p")
+        vaultQuickFill.keyEquivalentModifierMask = [.option, .shift]
+        vaultQuickFill.target = self
+        actionsMenu.addItem(vaultQuickFill)
 
         actionsMenu.addItem(.separator())
 
@@ -106,6 +136,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppKitHaptics.tap()
     }
 
+    @objc private func toggleQuickTranslateShortcut() {
+        appState.productivity.quickTranslate.toggle(surface: appState.settings.notchSurface)
+        AppKitHaptics.tap()
+    }
+
+    @objc private func toggleMascotShortcut() {
+        appState.settings.agentMascotEnabled.toggle()
+        AppKitHaptics.tap()
+    }
+
+    @objc private func openNotchVaultShortcut() {
+        appState.vault.refreshFrontmostContext()
+        if let notch = notchController {
+            withAnimation(Mono.openingSpring) {
+                notch.coordinator.detail = nil
+                notch.coordinator.selectedTab = .shelf
+                notch.coordinator.productivitySubTab = .vault
+                notch.coordinator.isExpanded = true
+            }
+        }
+        AppKitHaptics.tap()
+    }
+
     @objc private func smartScanShortcut() {
         Task { await appState.runSmartScan() }
     }
@@ -128,6 +181,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // Waiting hooks get "ask" so the agents fall back to their own prompt.
         appState.agents.stop()
+        appState.media.stop()
+        appState.productivity.stop()
+        appState.vault.lock()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -162,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.center()
         window.isOpaque = false
-        window.backgroundColor = NSColor(calibratedWhite: 0.025, alpha: 0.98)
+        window.backgroundColor = .clear
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 

@@ -1,22 +1,36 @@
 import CleanTrashCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum NotchTab: String, CaseIterable, Identifiable {
-    case vitals = "Estado"
-    case agents = "Agentes"
-    case dev = "Dev"
-    case unused = "Apps"
-    case actions = "Acciones"
+    case home = "Home"
+    case shelf = "Bandeja"
+    case cleaner = "Limpiar"
 
     var id: String { rawValue }
 
     var symbol: String {
         switch self {
-        case .vitals: return "waveform.path.ecg"
-        case .agents: return "sparkles"
-        case .dev: return "terminal"
-        case .unused: return "app.dashed"
-        case .actions: return "bolt"
+        case .home: return "house.fill"
+        case .shelf: return "tray.fill"
+        case .cleaner: return "sparkles"
+        }
+    }
+
+    var glassIcon: Icon3DName {
+        switch self {
+        case .home: return .notch
+        case .shelf: return .trash
+        case .cleaner: return .smartcare
+        }
+    }
+
+    /// Tailored inner content height per tab so each view matches Droppy's sleek proportions.
+    var bodyHeight: CGFloat {
+        switch self {
+        case .home: return 154
+        case .shelf: return 224
+        case .cleaner: return 226
         }
     }
 }
@@ -25,50 +39,72 @@ struct NotchRootView: View {
     @Bindable var appState: AppState
     @Bindable var coordinator: NotchCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selectedTab: NotchTab
 
-    init(appState: AppState, coordinator: NotchCoordinator, initialTab: NotchTab = .vitals) {
+    init(appState: AppState, coordinator: NotchCoordinator, initialTab: NotchTab? = nil) {
         self.appState = appState
         self.coordinator = coordinator
-        _selectedTab = State(initialValue: initialTab)
+        if let initialTab {
+            coordinator.selectedTab = initialTab
+        }
     }
-    @Namespace private var tabNamespace
+    @Namespace private var dockNamespace
     /// Destructive actions need a second tap within 3 s (prevents accidental cleans from a stray hover-click).
     @State private var armedAction: String?
     @State private var armTask: Task<Void, Never>?
     @State private var hoveredTab: NotchTab?
+    @State private var hoveredUtility: String?
 
     private var isIsland: Bool { appState.settings.notchStyle == .island }
+    private var surface: NotchSurfaceMode { appState.settings.notchSurface }
     private var hasNotice: Bool { appState.activeNotice != nil && !coordinator.isExpanded }
     /// An agent is waiting for Allow / Deny: the closed notch grows into a permission card.
     private var hasPermission: Bool { !appState.agents.pending.isEmpty && !coordinator.isExpanded }
 
+    private var ambientAccent: Color? {
+        guard appState.media.hasActiveTrack, coordinator.selectedTab == .home else { return nil }
+        return appState.media.palette.primary
+    }
+
+    /// Only expand closed ears when there is live activity (Music, Agents, Focus Timer, or CleanTrash task).
+    /// System vitals (RAM/CPU/GPU) now live cleanly in the macOS Menu Bar icon bar instead of crowding the closed notch.
+    private var hasLiveClosedEars: Bool {
+        guard appState.settings.showLiveNotchEars else { return false }
+        if appState.activityLabel != nil { return true }
+        if !appState.agents.earStack.isEmpty { return true }
+        if appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack { return true }
+        if appState.productivity.isTimerRunning { return true }
+        return false
+    }
+
     private var targetWidth: CGFloat {
-        if coordinator.isExpanded { return NotchCoordinator.expandedWidth }
+        if coordinator.isExpanded { return coordinator.expandedWidth(for: appState.settings.homeWidgets) }
         if hasPermission { return NotchCoordinator.permissionWidth }
         if hasNotice { return NotchCoordinator.noticeWidth }
-        if appState.settings.showLiveNotchEars {
+        if hasLiveClosedEars {
             return coordinator.closedWidth + 2 * NotchCoordinator.earWidth
         }
         return coordinator.closedWidth
     }
 
-    /// Horizontal content inset of the open notch: the 14 pt concave shoulder eats into each side, so
-    /// content needs that plus a real 16 pt gutter to breathe.
-    static let sideInset: CGFloat = 30
+    /// Horizontal content inset of the open notch: generous 20 pt concave shoulders need clear breathing room.
+    static let sideInset: CGFloat = 28
 
-    /// "Estado del Mac" hero row shown above the tabs (hidden inside a drill-down).
-    static let statusHeight: CGFloat = 64
-
-    /// header + status hero + tab bar (8 + 32 + 12) + 2×104 tiles + 10 gap + 16 bottom padding.
-    static func expandedHeight(headerHeight: CGFloat, isIsland: Bool, showsStatus: Bool = true) -> CGFloat {
-        headerHeight + (isIsland ? 6 : 0) + (showsStatus ? statusHeight : 0) + 52 + 218 + 16
+    /// header + content body + bottom breathing room (navigation floats in the Droppy capsule dock below!).
+    static func expandedHeight(
+        headerHeight: CGFloat,
+        isIsland: Bool,
+        bodyHeight: CGFloat = 154
+    ) -> CGFloat {
+        headerHeight + (isIsland ? 8 : 4) + bodyHeight + 16
     }
 
     private var targetHeight: CGFloat {
         if coordinator.isExpanded {
-            return Self.expandedHeight(headerHeight: headerHeight, isIsland: isIsland, showsStatus: coordinator.detail == nil)
-                + (coordinator.detail?.extraHeight ?? 0)
+            return Self.expandedHeight(
+                headerHeight: headerHeight,
+                isIsland: isIsland,
+                bodyHeight: coordinator.detail == nil ? coordinator.selectedTab.bodyHeight : 230
+            ) + coordinator.extraExpandedHeight
         }
         if hasPermission { return coordinator.closedHeight + permissionCardHeight }
         if hasNotice { return coordinator.closedHeight + 60 }
@@ -77,8 +113,8 @@ struct NotchRootView: View {
 
     private var currentShape: NotchShape {
         NotchShape(
-            topShoulderRadius: coordinator.isExpanded ? 14 : 8,
-            bottomCornerRadius: coordinator.isExpanded ? 22 : (isIsland ? 14 : 11),
+            topShoulderRadius: coordinator.isExpanded ? 20 : 9,
+            bottomCornerRadius: coordinator.isExpanded ? 28 : (isIsland ? 15 : 12),
             isIsland: isIsland,
             closeTopEdge: true
         )
@@ -86,8 +122,8 @@ struct NotchRootView: View {
 
     private var currentOutlineShape: NotchShape {
         NotchShape(
-            topShoulderRadius: coordinator.isExpanded ? 14 : 8,
-            bottomCornerRadius: coordinator.isExpanded ? 22 : (isIsland ? 14 : 11),
+            topShoulderRadius: coordinator.isExpanded ? 20 : 9,
+            bottomCornerRadius: coordinator.isExpanded ? 28 : (isIsland ? 15 : 12),
             isIsland: isIsland,
             closeTopEdge: isIsland
         )
@@ -99,58 +135,123 @@ struct NotchRootView: View {
         ZStack(alignment: .top) {
             Color.clear
 
-            VStack(spacing: 0) {
+            VStack(spacing: 10) {
+                // Main Notch / Island Shell (top-to-bottom native Liquid Glass or deep jet black)
+                VStack(spacing: 0) {
+                    if coordinator.isExpanded {
+                        expandedContent
+                            .transition(.opacity.combined(with: .offset(y: -4)))
+                    } else if let request = appState.agents.pending.first {
+                        permissionContent(request)
+                            .transition(.opacity)
+                    } else if let notice = appState.activeNotice {
+                        noticeContent(notice)
+                            .transition(.opacity)
+                    } else {
+                        idleContent
+                    }
+                }
+                .frame(width: targetWidth, height: targetHeight, alignment: .top)
+                .background(
+                    NotchSurfaceBackground(
+                        shape: shape,
+                        outlineShape: outlineShape,
+                        surface: surface,
+                        isExpanded: coordinator.isExpanded,
+                        isIsland: isIsland,
+                        hasToast: hasNotice || hasPermission,
+                        hasHardwareNotch: coordinator.geometry.hasHardwareNotch,
+                        ambientAccent: ambientAccent
+                    )
+                )
+                .clipShape(shape)
+                .onDrop(of: [.fileURL], isTargeted: Binding(
+                    get: { appState.productivity.isDragOverNotch },
+                    set: { targeting in
+                        appState.productivity.isDragOverNotch = targeting
+                        if targeting && !coordinator.isExpanded {
+                            withAnimation(Mono.openingSpring) {
+                                coordinator.selectedTab = .shelf
+                                coordinator.productivitySubTab = .shelf
+                                coordinator.isExpanded = true
+                            }
+                        }
+                    }
+                )) { providers in
+                    handleNotchFileDrop(providers: providers)
+                }
+
+                // Droppy Detached Floating Native Liquid Glass Capsule Dock (Images 1 & 2!)
                 if coordinator.isExpanded {
-                    expandedContent
-                        .transition(.opacity.combined(with: .offset(y: -4)))
-                } else if let request = appState.agents.pending.first {
-                    permissionContent(request)
-                        .transition(.opacity)
-                } else if let notice = appState.activeNotice {
-                    noticeContent(notice)
-                        .transition(.opacity)
-                } else {
-                    idleContent
+                    floatingCapsuleDock
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.88, anchor: .top)).combined(with: .offset(y: -8)),
+                            removal: .opacity.combined(with: .offset(y: -6))
+                        ))
                 }
             }
-            .frame(width: targetWidth, height: targetHeight, alignment: .top)
-            .background(
-                shape
-                    .fill(Color(hex: 0x050505))
-                    .overlay(
-                        outlineShape.stroke(
-                            Color.white.opacity(coordinator.isExpanded || hasNotice || hasPermission ? 0.14 : 0.06),
-                            lineWidth: 1
-                        )
-                    )
-                    .shadow(
-                        color: .black.opacity(coordinator.isExpanded || hasNotice || hasPermission ? 0.55 : 0.0),
-                        radius: coordinator.isExpanded ? 26 : 12,
-                        y: coordinator.isExpanded ? 12 : 4
-                    )
-            )
-            .clipShape(shape)
             .animation(
                 reduceMotion ? .none : (coordinator.isExpanded ? Mono.openingSpring : Mono.foldingSpring),
                 value: coordinator.isExpanded
             )
+            .animation(reduceMotion ? .none : Mono.openingSpring, value: coordinator.selectedTab)
+            .animation(reduceMotion ? .none : Mono.openingSpring, value: coordinator.showLyricsTheater)
+            .animation(reduceMotion ? .none : Mono.openingSpring, value: coordinator.isEditingWidgets)
+            .animation(reduceMotion ? .none : Mono.openingSpring, value: appState.settings.homeWidgets)
+            .animation(reduceMotion ? .none : Mono.betweenSpring, value: surface)
+            .animation(reduceMotion ? .none : Mono.betweenSpring, value: isIsland)
             .animation(reduceMotion ? .none : Mono.betweenSpring, value: appState.activeNotice?.id)
             .animation(reduceMotion ? .none : Mono.betweenSpring, value: appState.agents.pending.first?.id)
         }
         .frame(width: coordinator.stageWidth, height: coordinator.stageHeight, alignment: .top)
         .environment(\.colorScheme, .dark)
+        .environment(\.notchSurface, surface)
         .onChange(of: coordinator.isExpanded) { _, expanded in
-            // Opening while an agent waits lands on its card.
-            if expanded && !appState.agents.pending.isEmpty { selectedTab = .agents }
+            // Opening while an agent waits lands on Home (where the Agents widget lives).
+            if expanded && !appState.agents.pending.isEmpty { coordinator.selectedTab = .home }
         }
     }
 
-    // MARK: - Idle Hardware Ears
+    private func handleNotchFileDrop(providers: [NSItemProvider]) -> Bool {
+        var accepted = false
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                accepted = true
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    let url: URL?
+                    if let data = item as? Data {
+                        url = URL(dataRepresentation: data, relativeTo: nil)
+                    } else if let direct = item as? URL {
+                        url = direct
+                    } else {
+                        url = nil
+                    }
+                    if let url {
+                        Task { @MainActor in
+                            appState.productivity.addFiles([url])
+                            withAnimation(Mono.openingSpring) {
+                                coordinator.selectedTab = .shelf
+                                coordinator.productivitySubTab = .shelf
+                                coordinator.isExpanded = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return accepted
+    }
+
+    // MARK: - Idle Hardware Ears (Music · Agents · Timer · Task; System Stats live in Menu Bar)
 
     private var idleContent: some View {
-        HStack(spacing: 0) {
-            if appState.settings.showLiveNotchEars {
-                // Left ear: RAM · CPU · GPU (or the running task while CleanTrash works).
+        let sidePad: CGFloat = 23 // +5 pt extra breathing room on each outer side
+        return HStack(spacing: 0) {
+            if hasLiveClosedEars {
+                let stack = appState.agents.earStack
+                let showMusic = appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack
+
+                // Left ear: CleanTrash active task → Music artwork + track title → Agent stack → Timer
                 Group {
                     if appState.activityLabel != nil {
                         HStack(spacing: 5) {
@@ -165,39 +266,110 @@ struct NotchRootView: View {
                                 .lineLimit(1)
                         }
                         .transition(.opacity)
-                    } else {
-                        NotchMetricsEar(
-                            memory: appState.telemetry.memory.usedPercent,
-                            cpu: appState.telemetry.cpuTotalPercent,
-                            gpu: appState.telemetry.gpu.deviceUtilizationPercent
+                    } else if showMusic, let track = appState.media.track {
+                        let marqueeLabel = track.artist.isEmpty ? track.title : "\(track.title)  —  \(track.artist)"
+                        HStack(spacing: 6) {
+                            Group {
+                                if let art = appState.media.artwork {
+                                    Image(nsImage: art)
+                                        .resizable()
+                                        .interpolation(.high)
+                                        .aspectRatio(contentMode: .fill)
+                                } else {
+                                    LinearGradient(
+                                        colors: [appState.media.palette.primary, appState.media.palette.secondary],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                    .overlay {
+                                        Image(systemName: "music.note")
+                                            .font(.system(size: 8.5, weight: .bold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+                            }
+                            .frame(width: 18, height: 18)
+                            .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.24), lineWidth: 0.6)
+                            )
+
+                            MarqueeText(
+                                text: marqueeLabel,
+                                font: .system(size: 10.5, weight: .semibold),
+                                color: .white.opacity(0.92),
+                                speed: 22
+                            )
+
+                            // If an Agent occupies the right ear, keep the animated waveform visible right here!
+                            if !stack.isEmpty {
+                                AudioVisualizerBars(
+                                    isPlaying: appState.media.isPlaying,
+                                    color: appState.media.palette.primary,
+                                    secondaryColor: appState.media.palette.secondary,
+                                    barCount: 3,
+                                    maxHeight: 11,
+                                    barWidth: 1.8
+                                )
+                            }
+                        }
+                        .transition(.opacity)
+                    } else if !stack.isEmpty {
+                        HStack(spacing: -4) {
+                            ForEach(stack.prefix(3)) { s in
+                                ProviderLogo(source: s.source, size: 17)
+                            }
+                        }
+                        .transition(.opacity)
+                    } else if appState.productivity.isTimerRunning {
+                        NotchTimerEar(
+                            formatted: appState.productivity.timerFormatted,
+                            label: appState.productivity.timerLabel
                         )
                         .transition(.opacity)
                     }
                 }
-                .frame(width: NotchCoordinator.earWidth - 14, alignment: .leading)
-                .padding(.leading, 14)
+                .frame(width: NotchCoordinator.earWidth - sidePad, alignment: .leading)
+                .padding(.leading, sidePad)
                 .animation(Mono.betweenSpring, value: appState.activityLabel)
 
                 Spacer(minLength: 0)
 
-                // Right ear: logos of the agents at work, the latest in front.
+                // Right ear: Agents live tool → Music live lyric + animated waveform → Focus Timer
                 Group {
-                    let stack = appState.agents.earStack
                     if !stack.isEmpty {
                         NotchAgentsEar(stack: stack)
-                    } else if appState.reclaimableDevBytes >= 1_000_000_000 {
-                        HStack(spacing: 3) {
-                            Icon3D(name: .dev, size: 15)
-                            Text(ByteFormat.compact(appState.reclaimableDevBytes))
-                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                                .foregroundStyle(Color.white.opacity(0.86))
+                    } else if showMusic {
+                        HStack(spacing: 6) {
+                            if appState.settings.showLyricsInNotchEar, let lyric = appState.media.currentLyricLine {
+                                MarqueeText(
+                                    text: lyric,
+                                    font: .system(size: 10, weight: .medium),
+                                    color: .white.opacity(0.86),
+                                    speed: 26,
+                                    pauseDuration: 1.0
+                                )
+                            }
+                            AudioVisualizerBars(
+                                isPlaying: appState.media.isPlaying,
+                                color: appState.media.palette.primary,
+                                secondaryColor: appState.media.palette.secondary,
+                                barCount: 5,
+                                maxHeight: 13,
+                                barWidth: 2.1
+                            )
                         }
-                        .help("Espacio recuperable en carpetas de desarrollo")
                         .transition(.opacity)
+                    } else if appState.productivity.isTimerRunning {
+                        Text(appState.productivity.timerLabel)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                            .lineLimit(1)
                     }
                 }
-                .frame(width: NotchCoordinator.earWidth - 12, alignment: .trailing)
-                .padding(.trailing, 12)
+                .frame(width: NotchCoordinator.earWidth - sidePad, alignment: .trailing)
+                .padding(.trailing, sidePad)
             } else {
                 Spacer()
             }
@@ -316,18 +488,18 @@ struct NotchRootView: View {
     private func aurora(_ colors: [Color]) -> some View {
         ZStack {
             LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
-                .frame(height: 30)
-                .blur(radius: 22)
-                .offset(y: 20)
-            LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
-                .frame(height: 1)
-                .blur(radius: 1)
-                .opacity(0.35)
+                .frame(height: 46)
+                .blur(radius: 18)
+                .offset(y: 16)
+            LinearGradient(colors: colors.map { $0.opacity(0.9) }, startPoint: .leading, endPoint: .trailing)
+                .frame(height: 1.5)
+                .blur(radius: 1.5)
+                .opacity(0.6)
                 .frame(maxHeight: .infinity, alignment: .bottom)
         }
-        .frame(height: 40)
+        .frame(height: 46)
         .mask(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
-        .opacity(0.22)
+        .opacity(0.55)
         .allowsHitTesting(false)
     }
 
@@ -380,7 +552,7 @@ struct NotchRootView: View {
         }
     }
 
-    // MARK: - Expanded Monochrome Control Shelf
+    // MARK: - Expanded Droppy Control Shelf
 
     private var expandedContent: some View {
         VStack(spacing: 0) {
@@ -388,7 +560,7 @@ struct NotchRootView: View {
             if let detail = coordinator.detail {
                 NotchDetailView(appState: appState, coordinator: coordinator, detail: detail)
                     .padding(.horizontal, Self.sideInset)
-                    .padding(.top, 8)
+                    .padding(.top, 6)
                     .padding(.bottom, 16)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .transition(.asymmetric(
@@ -396,123 +568,341 @@ struct NotchRootView: View {
                         removal: .opacity
                     ))
             } else {
-            statusHero
-                .transition(.opacity)
-
-            tabBar
-                .padding(.horizontal, Self.sideInset)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-                .transition(.opacity)
-
-            // Tab Body
-            Group {
-                switch selectedTab {
-                case .vitals:
-                    vitalsTab
-                case .agents:
-                    NotchAgentsTab(monitor: appState.agents)
-                case .dev:
-                    devTab
-                case .unused:
-                    unusedTab
-                case .actions:
-                    quickActionsTab
+                // Tab Body — ONLY 3 minimal Droppy spaces (Home Widgets · Bandeja · Limpiar)
+                Group {
+                    switch coordinator.selectedTab {
+                    case .home:
+                        NotchHomeWidgetsView(appState: appState, coordinator: coordinator)
+                    case .shelf:
+                        NotchProductivityView(
+                            hub: appState.productivity,
+                            vault: appState.vault,
+                            subTab: $coordinator.productivitySubTab,
+                            onCollapseNotch: {
+                                withAnimation(Mono.foldingSpring) {
+                                    coordinator.isExpanded = false
+                                }
+                            }
+                        )
+                    case .cleaner:
+                        NotchCleanerView(appState: appState, coordinator: coordinator)
+                    }
                 }
-            }
-            .id(selectedTab)
-            .transition(.opacity.combined(with: .offset(y: 3)))
-            .padding(.horizontal, Self.sideInset)
-            .padding(.bottom, 16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .id(coordinator.selectedTab)
+                .transition(.opacity.combined(with: .offset(y: 3)))
+                .padding(.horizontal, Self.sideInset)
+                .padding(.top, 6)
+                .padding(.bottom, 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
         .animation(reduceMotion ? .none : Mono.openingSpring, value: coordinator.detail)
     }
 
-    // MARK: - Estado del Mac (hero above the tabs)
+    // MARK: - Subtle & Refined Floating Liquid Glass Capsule Dock
 
-    private var statusHero: some View {
-        let health = appState.macHealth
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                (Text("Estado del Mac: ").foregroundStyle(Color.white)
-                    + Text(health.label).foregroundStyle(health.tint))
-                    .font(.system(size: 19, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .contentTransition(.interpolate)
-                Text(health.reason ?? macSubtitle)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Color.white.opacity(0.6))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .animation(Mono.betweenSpring, value: health)
+    private var floatingCapsuleDock: some View {
+        let tabs = NotchTab.allCases
+        return NotchGlassGroup(spacing: 10) {
+            HStack(spacing: 10) {
+                HStack(spacing: 4) {
+                    ForEach(tabs) { tab in
+                        let isSelected = coordinator.selectedTab == tab && coordinator.detail == nil
+                        let isHovered = hoveredTab == tab
+                        let badge = tabBadge(tab)
 
-            Spacer(minLength: 6)
+                        Button {
+                            withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
+                                coordinator.detail = nil
+                                coordinator.selectedTab = tab
+                            }
+                            AppKitHaptics.tap()
+                        } label: {
+                            ZStack(alignment: .topTrailing) {
+                                VStack(spacing: 2) {
+                                    Icon3D(
+                                        name: tab.glassIcon,
+                                        size: 22,
+                                        isActive: isSelected || (tab == .home && appState.media.isPlaying),
+                                        externalHover: isHovered,
+                                        interactive: false
+                                    )
+                                    .scaleEffect(isHovered && !reduceMotion ? 1.07 : 1.0)
 
-            if let area = health.area, health.level != .good {
-                Button {
-                    openDetail(area.notchDetail)
-                } label: {
-                    Text("Revisar")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(health.tint))
+                                    Circle()
+                                        .fill(isSelected ? Color.white.opacity(0.9) : Color.clear)
+                                        .frame(width: 3.5, height: 3.5)
+                                        .scaleEffect(isSelected ? 1 : 0.2)
+                                        .animation(Mono.betweenSpring, value: isSelected)
+                                }
+                                .frame(width: 36, height: 32)
+                                .background {
+                                    if isSelected {
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.14))
+                                            .matchedGeometryEffect(id: "droppyDockPill", in: dockNamespace)
+                                    } else if isHovered {
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.06))
+                                            .transition(.opacity)
+                                    }
+                                }
+
+                                if let badge {
+                                    Text(badge)
+                                        .font(.system(size: 8.5, weight: .bold).monospacedDigit())
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4.5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color(hex: 0xFF4B3A)))
+                                        .overlay(Capsule().strokeBorder(Color(hex: 0x161822), lineWidth: 1))
+                                        .offset(x: 1, y: -2)
+                                }
+                            }
+                            .overlay(alignment: .top) {
+                                if isHovered {
+                                    GlassDockTooltipPill(text: tab.rawValue)
+                                        .offset(y: -30)
+                                        .transition(.opacity.combined(with: .offset(y: 3)))
+                                }
+                            }
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .animation(reduceMotion ? .none : Mono.fast, value: isHovered)
+                        .onHover { inside in
+                            withAnimation(Mono.fast) {
+                                if inside { hoveredTab = tab } else if hoveredTab == tab { hoveredTab = nil }
+                            }
+                        }
+                        .pointingHandCursor()
+                        .help(tab.rawValue)
+                    }
+
+                    // Hairline divider
+                    Rectangle()
+                        .fill(Color.white.opacity(0.14))
+                        .frame(width: 1, height: 16)
+                        .padding(.horizontal, 3)
+
+                    // Quick Vault AutoFill button
+                    dockUtilityGlassButton(
+                        id: "vault",
+                        label: "Bóveda (⌥⇧P)",
+                        icon: .vault,
+                        isActive: coordinator.selectedTab == .shelf && coordinator.productivitySubTab == .vault
+                    ) {
+                        withAnimation(reduceMotion ? .none : Mono.openingSpring) {
+                            coordinator.detail = nil
+                            coordinator.selectedTab = .shelf
+                            coordinator.productivitySubTab = .vault
+                        }
+                        appState.vault.refreshFrontmostContext()
+                        AppKitHaptics.tap()
+                    }
+
+                    // Customize Home Widgets button
+                    dockUtilitySymbolButton(
+                        id: "widgets",
+                        label: "Widgets",
+                        symbol: "square.grid.2x2",
+                        tint: coordinator.isEditingWidgets ? Color(hex: 0x60A5FA) : Color.white.opacity(0.74),
+                        isActive: coordinator.isEditingWidgets
+                    ) {
+                        withAnimation(reduceMotion ? .none : Mono.openingSpring) {
+                            coordinator.detail = nil
+                            coordinator.showLyricsTheater = false
+                            if coordinator.selectedTab != .home {
+                                coordinator.selectedTab = .home
+                                coordinator.isEditingWidgets = true
+                            } else {
+                                coordinator.isEditingWidgets.toggle()
+                            }
+                        }
+                        AppKitHaptics.tap()
+                    }
+
+                    // 1-click Notch ↔ Floating Island switch
+                    dockUtilitySymbolButton(
+                        id: "style",
+                        label: isIsland ? "Modo Notch" : "Modo Isla",
+                        symbol: isIsland ? "rectangle.topthird.inset.filled" : "capsule.fill",
+                        tint: Color.white.opacity(0.74),
+                        isActive: isIsland
+                    ) {
+                        withAnimation(reduceMotion ? .none : Mono.openingSpring) {
+                            appState.settings.notchStyle = isIsland ? .notch : .island
+                        }
+                        AppKitHaptics.tap()
+                    }
+
+                    // 1-click Dynamic Glass / Liquid Glass / Negro switch
+                    dockUtilitySymbolButton(
+                        id: "surface",
+                        label: surface.label,
+                        symbol: surfaceIcon,
+                        tint: surface.isGlass ? Color.white : Color.white.opacity(0.66),
+                        isActive: surface.isGlass
+                    ) {
+                        withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
+                            appState.settings.notchSurface = appState.settings.notchSurface.next
+                        }
+                        AppKitHaptics.tap()
+                    }
                 }
-                .buttonStyle(NotchButtonStyle())
-                .help(health.issueCount > 1 ? "\(health.issueCount) avisos" : "Ver detalle")
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4.5)
+                .floatingDockGlass(in: Capsule(), surface: surface)
+
+                // Detached circular [×] close button
+                Button {
+                    withAnimation(reduceMotion ? .none : Mono.foldingSpring) {
+                        coordinator.isExpanded = false
+                    }
+                    AppKitHaptics.tap()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .frame(width: 40, height: 40)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(NotchButtonStyle(hoverScale: 1.06))
+                .floatingDockGlass(in: Circle(), surface: surface)
+                .help("Cerrar Notch (Esc)")
             }
-
-            Icon3D(name: .mac, size: 52)
-        }
-        .padding(.horizontal, Self.sideInset + 2)
-        .frame(height: Self.statusHeight)
-        .background(alignment: .trailing) {
-            // Soft halo behind the laptop, tinted by the verdict.
-            Circle()
-                .fill(health.tint.opacity(0.16))
-                .frame(width: 90, height: 90)
-                .blur(radius: 26)
-                .offset(x: -14)
-                .allowsHitTesting(false)
         }
     }
 
-    private var macSubtitle: String {
-        let t = appState.telemetry
-        return "Tu Mac · \(t.gpu.modelName) · \(t.coreCount) núcleos"
+    private func dockUtilityGlassButton(
+        id: String,
+        label: String,
+        icon: Icon3DName,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        let isHovered = hoveredUtility == id
+
+        return Button(action: action) {
+            VStack(spacing: 2) {
+                Icon3D(
+                    name: icon,
+                    size: 21,
+                    isActive: isActive || appState.vault.isUnlocked,
+                    externalHover: isHovered,
+                    interactive: false
+                )
+                .scaleEffect(isHovered && !reduceMotion ? 1.07 : 1.0)
+
+                Circle()
+                    .fill(isActive ? Mono.ramAccent : Color.clear)
+                    .frame(width: 3.5, height: 3.5)
+            }
+            .frame(width: 32, height: 32)
+            .background(Capsule().fill(isActive ? Mono.ramAccent.opacity(0.14) : (isHovered ? Color.white.opacity(0.06) : .clear)))
+            .overlay(alignment: .top) {
+                if isHovered {
+                    GlassDockTooltipPill(text: label)
+                        .offset(y: -30)
+                        .transition(.opacity.combined(with: .offset(y: 3)))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? .none : Mono.fast, value: isHovered)
+        .onHover { inside in
+            withAnimation(Mono.fast) {
+                if inside { hoveredUtility = id } else if hoveredUtility == id { hoveredUtility = nil }
+            }
+        }
+        .pointingHandCursor()
+        .help(label)
     }
 
-    private func openDetail(_ detail: NotchDetail) {
-        withAnimation(reduceMotion ? .none : Mono.openingSpring) {
-            coordinator.detail = detail
+    private func dockUtilitySymbolButton(
+        id: String,
+        label: String,
+        symbol: String,
+        tint: Color,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        let isHovered = hoveredUtility == id
+
+        return Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .scaleEffect(isHovered && !reduceMotion ? 1.07 : 1.0)
+                Circle()
+                    .fill(isActive ? tint.opacity(0.85) : Color.clear)
+                    .frame(width: 3, height: 3)
+            }
+            .frame(width: 28, height: 32)
+            .background(Capsule().fill(isActive ? Color.white.opacity(0.11) : (isHovered ? Color.white.opacity(0.06) : .clear)))
+            .overlay(alignment: .top) {
+                if isHovered {
+                    GlassDockTooltipPill(text: label)
+                        .offset(y: -30)
+                        .transition(.opacity.combined(with: .offset(y: 3)))
+                }
+            }
+            .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? .none : Mono.fast, value: isHovered)
+        .onHover { inside in
+            withAnimation(Mono.fast) {
+                if inside { hoveredUtility = id } else if hoveredUtility == id { hoveredUtility = nil }
+            }
+        }
+        .pointingHandCursor()
+        .help(label)
     }
 
     /// On a real notch the header sits in the two "wings" beside the camera housing (like the Dynamic
     /// Island), so the camera never eats a row of content. Island mode uses a normal single row.
     private var usesCameraWings: Bool { coordinator.geometry.hasHardwareNotch && !isIsland }
 
-    private var headerHeight: CGFloat { usesCameraWings ? max(coordinator.closedHeight, 28) : 40 }
+    private var headerHeight: CGFloat { usesCameraWings ? max(coordinator.closedHeight, 28) : 34 }
 
     private var expandedHeader: some View {
         HStack(spacing: 0) {
-            // Left wing: brand
+            // Left wing: brand + live Focus timer pill when running
             HStack(spacing: 6) {
                 Image(systemName: "sparkle")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 10.5, weight: .bold))
                     .foregroundStyle(.white)
                     .symbolEffect(.pulse, isActive: appState.activityLabel != nil && !reduceMotion)
                 Text("CleanTrash")
                     .font(.system(size: 10, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Color.white.opacity(0.9))
+                    .foregroundStyle(Color.white.opacity(0.82))
                     .lineLimit(1)
                     .fixedSize()
+
+                if appState.productivity.isTimerRunning {
+                    Button {
+                        withAnimation(Mono.betweenSpring) {
+                            coordinator.detail = nil
+                            coordinator.selectedTab = .shelf
+                            coordinator.productivitySubTab = .focus
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Circle().fill(Mono.healthy).frame(width: 5, height: 5)
+                            Text(appState.productivity.timerFormatted)
+                                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .contentTransition(.numericText(countsDown: true))
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(Capsule().fill(Mono.healthy.opacity(0.18)))
+                    }
+                    .buttonStyle(NotchButtonStyle(hoverScale: 1.06))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -520,7 +910,7 @@ struct NotchRootView: View {
                 Color.clear.frame(width: coordinator.closedWidth + 8)
             }
 
-            // Right wing: live status + open dashboard
+            // Right wing: live status + surface badge + open dashboard
             HStack(spacing: 6) {
                 if appState.activityLabel != nil {
                     HStack(spacing: 4) {
@@ -549,6 +939,11 @@ struct NotchRootView: View {
                         .transition(.opacity)
                 }
 
+                Text(coordinator.selectedTab.rawValue)
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .lineLimit(1)
+
                 Button {
                     coordinator.isExpanded = false
                     appState.onOpenMainWindow?()
@@ -571,63 +966,12 @@ struct NotchRootView: View {
         .padding(.top, isIsland ? 6 : 0)
     }
 
-    /// Full-width segmented control: equal segments, one line each, sliding selection pill.
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(NotchTab.allCases) { tab in
-                let isSelected = selectedTab == tab
-                let isHovered = hoveredTab == tab && !isSelected
-                Button {
-                    guard selectedTab != tab else { return }
-                    withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: tab.symbol)
-                            .font(.system(size: 10.5, weight: .semibold))
-                        Text(tab.rawValue)
-                            .font(.system(size: 11, weight: .semibold))
-                            .lineLimit(1)
-                            .fixedSize()
-                        if let badge = tabBadge(tab) {
-                            Text(badge)
-                                .font(.system(size: 8.5, weight: .bold).monospacedDigit())
-                                .foregroundStyle(isSelected ? Color.white : Color.black)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Capsule().fill(isSelected ? Color.black.opacity(0.75) : Color.white.opacity(0.85)))
-                                .fixedSize()
-                        }
-                    }
-                    .foregroundStyle(isSelected ? Color.black : Color.white.opacity(isHovered ? 0.95 : 0.62))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 26)
-                    .background {
-                        if isSelected {
-                            Capsule()
-                                .fill(Color.white)
-                                .matchedGeometryEffect(id: "notchTabPill", in: tabNamespace)
-                        } else if isHovered {
-                            Capsule()
-                                .fill(Color.white.opacity(0.1))
-                                .transition(.opacity)
-                        }
-                    }
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .onHover { inside in
-                    withAnimation(Mono.fast) {
-                        if inside { hoveredTab = tab } else if hoveredTab == tab { hoveredTab = nil }
-                    }
-                }
-                .pointingHandCursor()
-            }
+    private var surfaceIcon: String {
+        switch surface {
+        case .obsidian: return "moon.fill"
+        case .glass: return "drop.halffull"
+        case .clearGlass: return "sparkles"
         }
-        .padding(3)
-        .background(Capsule().fill(Color.white.opacity(0.07)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
     }
 
     /// 4 rows fit the shelf exactly; with more items show 3 + a "see all" link.
@@ -635,488 +979,47 @@ struct NotchRootView: View {
 
     private func tabBadge(_ tab: NotchTab) -> String? {
         switch tab {
-        case .agents:
-            if !appState.agents.pending.isEmpty { return "\(appState.agents.pending.count)" }
-            let working = appState.agents.workingCount
-            return working > 0 ? "\(working)" : nil
-        case .dev:
+        case .shelf:
+            let count = appState.productivity.shelfItems.count
+            return count > 0 ? "\(count)" : nil
+        case .cleaner:
             let count = appState.devArtifacts.filter { !$0.isActiveBuild }.count
             return count > 0 ? "\(count)" : nil
-        case .unused:
-            return appState.unusedApps.isEmpty ? nil : "\(appState.unusedApps.count)"
-        default:
-            return nil
+        case .home:
+            let pending = appState.agents.pending.count
+            return pending > 0 ? "\(pending)" : nil
         }
-    }
-
-    private func notchEmptyState(icon: String, title: String, subtitle: String, busy: Bool = false) -> some View {
-        VStack(spacing: 8) {
-            Spacer(minLength: 0)
-            ZStack {
-                Circle().fill(Color.white.opacity(0.06)).frame(width: 44, height: 44)
-                if busy {
-                    ProgressView().controlSize(.small).tint(.white)
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(Mono.healthy)
-                }
-            }
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-            Text(subtitle)
-                .font(.system(size: 10.5).monospacedDigit())
-                .foregroundStyle(Color.white.opacity(0.5))
-                .multilineTextAlignment(.center)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Tab 1: Live Vitals (Uniform 2x2 Swiss Bento Grid)
-
-    private var vitalsTab: some View {
-        Grid(horizontalSpacing: 10, verticalSpacing: 10) {
-            GridRow {
-                // Top-Left: RAM Card with Optimize action
-                notchMetricTile(
-                    icon: .memory,
-                    title: "Memoria",
-                    value: "\(Int(appState.telemetry.memory.usedPercent))%",
-                    detail: "\(ByteFormat.memory(appState.telemetry.memory.usedBytes)) / \(ByteFormat.memory(appState.telemetry.memory.totalBytes)) · \(appState.telemetry.memory.pressure.label)",
-                    progress: appState.telemetry.memory.usedPercent / 100.0,
-                    actionTitle: appState.isOptimizingRAM ? "Liberando…" : "Optimizar",
-                    isDisabled: appState.isOptimizingRAM,
-                    onOpen: { openDetail(.memory) }
-                ) {
-                    Task { await appState.optimizeRAM() }
-                }
-
-                // Top-Right: GPU Card with Trim action
-                notchMetricTile(
-                    icon: .gpu,
-                    title: "GPU · \(appState.telemetry.gpu.modelName)",
-                    value: "\(Int(appState.telemetry.gpu.deviceUtilizationPercent))%",
-                    detail: "En uso \(ByteFormat.memory(appState.telemetry.gpu.inUseMemoryBytes)) · Asignada \(ByteFormat.memory(appState.telemetry.gpu.allocatedMemoryBytes))",
-                    progress: appState.telemetry.gpu.deviceUtilizationPercent / 100.0,
-                    actionTitle: "Limpiar caché",
-                    isDisabled: appState.isCleaning,
-                    onOpen: { openDetail(.gpu) }
-                ) {
-                    Task { await appState.trimGPUCaches() }
-                }
-            }
-
-            GridRow {
-                // Bottom-Left: Disk Card
-                notchMetricTile(
-                    icon: .disk,
-                    title: appState.telemetry.disk.volumeName,
-                    value: ByteFormat.compact(appState.telemetry.disk.availableBytes),
-                    detail: "de \(ByteFormat.compact(appState.telemetry.disk.totalBytes)) · basura \(ByteFormat.compact(appState.totalSmartReclaimableBytes))",
-                    progress: appState.telemetry.disk.usedPercent / 100.0,
-                    actionTitle: armedAction == "smartClean"
-                        ? "¿Borrar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))?"
-                        : (appState.isCleaning ? "Limpiando…" : "Limpiar"),
-                    isDisabled: appState.isCleaning || appState.totalSmartReclaimableBytes == 0,
-                    isArmed: armedAction == "smartClean",
-                    onOpen: { openDetail(.disk) }
-                ) {
-                    confirmOrArm("smartClean") {
-                        Task { await appState.runSmartClean() }
-                    }
-                }
-
-                // Bottom-Right: CPU with one-tap relief for whatever is hogging it
-                notchMetricTile(
-                    icon: .cpu,
-                    title: "CPU · \(appState.telemetry.thermalState)",
-                    value: "\(Int(appState.telemetry.cpuTotalPercent))%",
-                    detail: cpuTileDetail,
-                    progress: appState.telemetry.cpuTotalPercent / 100.0,
-                    progressTint: appState.isCPUOverloaded ? Mono.danger : nil,
-                    actionTitle: cpuTileActionTitle,
-                    isDisabled: false,
-                    onOpen: { openDetail(.cpu) }
-                ) {
-                    openDetail(.cpu)
-                }
-            }
-        }
-    }
-
-    private var cpuTileDetail: String {
-        let sim = appState.telemetry.simulatorLoad
-        if sim.cpuPercent >= 50 {
-            return "Simuladores \(Int(sim.cpuPercent))% · carga \(Int(appState.telemetry.loadAverage))"
-        }
-        if let top = appState.visibleCPUProcesses.first {
-            return "\(top.name) \(Int(top.cpuPercent))% · carga \(Int(appState.telemetry.loadAverage))"
-        }
-        return "Carga \(Int(appState.telemetry.loadAverage)) · \(appState.telemetry.processCount) procesos"
-    }
-
-    private var cpuTileActionTitle: String {
-        let heavy = appState.heavyCPUProcesses.count
-        if appState.telemetry.simulatorLoad.cpuPercent >= 50 { return "Ver simuladores" }
-        if heavy > 0 { return "\(heavy) pesada\(heavy == 1 ? "" : "s")" }
-        return "Procesos"
-    }
-
-    private func notchMetricTile(
-        icon: Icon3DName,
-        title: String,
-        value: String,
-        detail: String,
-        progress: Double,
-        progressTint: Color? = nil,
-        actionTitle: String,
-        isDisabled: Bool = false,
-        isArmed: Bool = false,
-        onOpen: (() -> Void)? = nil,
-        action: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                Icon3D(name: icon, size: 22)
-                    .frame(width: 22, height: 16)
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.85))
-                    .lineLimit(1)
-                Spacer()
-                if onOpen != nil {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.4))
-                }
-            }
-
-            HStack(alignment: .center, spacing: 6) {
-                Text(value)
-                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .contentTransition(.numericText())
-                Spacer(minLength: 4)
-                Button(actionTitle, action: action)
-                    .font(.system(size: 10, weight: .bold))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .foregroundStyle(isArmed ? Color.white : Color.black)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3.5)
-                    .background(Capsule().fill(isArmed ? Mono.danger : Color.white))
-                    .opacity(isDisabled && !isArmed ? 0.4 : 1)
-                    .disabled(isDisabled && !isArmed)
-                    .contentTransition(.interpolate)
-                    .buttonStyle(NotchButtonStyle())
-            }
-
-            NotchBar(value: progress, tint: progressTint ?? .white)
-
-            Spacer(minLength: 0)
-
-            Text(detail)
-                .font(.system(size: 9.5, weight: .medium).monospacedDigit())
-                .foregroundStyle(Color.white.opacity(0.72))
-                .lineLimit(1)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 104, maxHeight: 104, alignment: .topLeading)
-        .modifier(NotchTileChrome(onOpen: onOpen))
-    }
-
-    // MARK: - Tab 2: Live Dev Radar (Cargo target/, node_modules/, Swift .build/)
-
-    private var devTab: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Proyectos · \(ByteFormat.compact(appState.reclaimableDevBytes)) recuperables")
-                    .font(.system(size: 10, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Color.white.opacity(0.65))
-                Spacer()
-                Button(appState.isScanningDev ? "Buscando…" : "Buscar") {
-                    Task { await appState.scanDevArtifacts() }
-                }
-                .buttonStyle(MonoGhostButtonStyle())
-                .disabled(appState.isScanningDev)
-
-                Button(armedAction == "devAll" ? "¿Confirmar?" : "Limpiar todo") {
-                    confirmOrArm("devAll") {
-                        Task { await appState.cleanSelectedDevArtifacts() }
-                    }
-                }
-                .buttonStyle(MonoPrimaryButtonStyle())
-                .disabled(appState.reclaimableDevBytes == 0 || appState.isCleaning)
-            }
-
-            if appState.devArtifacts.isEmpty {
-                notchEmptyState(
-                    icon: "checkmark",
-                    title: appState.isScanningDev ? "Buscando proyectos…" : "Proyectos ligeros",
-                    subtitle: appState.isScanningDev ? "target/ · node_modules/ · .build/" : "No hay compilaciones pesadas que borrar",
-                    busy: appState.isScanningDev
-                )
-            } else {
-                VStack(spacing: 6) {
-                        ForEach(appState.devArtifacts.prefix(devRowLimit)) { item in
-                            HStack(spacing: 8) {
-                                Image(systemName: item.ecosystem.symbolName)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Color.white.opacity(0.7))
-                                    .frame(width: 20)
-
-                                VStack(alignment: .leading, spacing: 1) {
-                                    HStack(spacing: 6) {
-                                        Text(item.projectName)
-                                            .font(.system(size: 11.5, weight: .semibold))
-                                            .foregroundStyle(.white)
-                                            .lineLimit(1)
-                                        Text(item.artifactKind)
-                                            .font(.system(size: 10).monospacedDigit())
-                                            .foregroundStyle(Color.white.opacity(0.55))
-                                        if item.isActiveBuild {
-                                            MonoTag(text: "EN USO", inverted: true)
-                                        }
-                                    }
-                                    Text("Sin tocar \(ByteFormat.relativeAge(item.lastModified))")
-                                        .font(.system(size: 9.5).monospacedDigit())
-                                        .foregroundStyle(Color.white.opacity(0.45))
-                                }
-
-                                Spacer()
-
-                                Text(ByteFormat.compact(item.sizeBytes))
-                                    .font(.system(size: 11, weight: .bold).monospacedDigit())
-                                    .foregroundStyle(.white)
-
-                                Button {
-                                    Task { await appState.cleanSingleDevArtifact(item) }
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 10.5))
-                                        .foregroundStyle(item.isActiveBuild ? Color.white.opacity(0.25) : Color.white.opacity(0.85))
-                                        .frame(width: 24, height: 24)
-                                        .background(Circle().fill(Color.white.opacity(0.08)))
-                                        .contentShape(Circle())
-                                }
-                                .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
-                                .disabled(item.isActiveBuild || appState.isCleaning)
-                                .help(item.isActiveBuild ? "Compilación en uso: no se puede borrar" : "Borrar \(item.artifactKind)")
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .notchHoverRow(cornerRadius: 9, base: 0.045, hover: 0.095)
-                        }
-
-                        if appState.devArtifacts.count > devRowLimit {
-                            Button {
-                                coordinator.isExpanded = false
-                                appState.selectedSection = .devRadar
-                                appState.onOpenMainWindow?()
-                            } label: {
-                                Text("+\(appState.devArtifacts.count - devRowLimit) más · Ver todo en Dev Radar")
-                                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                                    .foregroundStyle(Color.white.opacity(0.55))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 4)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(NotchButtonStyle(hoverScale: 1))
-                        }
-                }
-            }
-        }
-    }
-
-    // MARK: - Tab 3: Unused Apps Quick Triage
-
-    private var unusedTab: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(appState.unusedApps.isEmpty ? "Apps sin usar" : "\(appState.unusedApps.count) sin usar · más de \(appState.settings.unusedAppThresholdDays) días")
-                    .font(.system(size: 10, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Color.white.opacity(0.65))
-                Spacer()
-                Button("Ver todas") {
-                    coordinator.isExpanded = false
-                    appState.selectedSection = .appsAudit
-                    appState.onOpenMainWindow?()
-                }
-                .buttonStyle(MonoGhostButtonStyle())
-            }
-
-            if let candidate = appState.unusedApps.first {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: candidate.appPath))
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: 42, height: 42)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("¿Aún usas \(candidate.name)?")
-                                .font(.system(size: 13.5, weight: .semibold))
-                                .foregroundStyle(.white)
-                            Text("\(ByteFormat.relativeAge(candidate.lastUsedDate)) · \(ByteFormat.compact(candidate.totalSizeBytes))")
-                                .font(.system(size: 10.5).monospacedDigit())
-                                .foregroundStyle(Color.white.opacity(0.72))
-                                .lineLimit(2)
-                        }
-                    }
-
-                    HStack(spacing: 8) {
-                        Button("La uso") {
-                            withAnimation(Mono.betweenSpring) {
-                                appState.markAppDecision(candidate, decision: .keep)
-                            }
-                        }
-                        .buttonStyle(MonoGhostButtonStyle())
-
-                        Button("Luego") {
-                            withAnimation(Mono.betweenSpring) {
-                                appState.markAppDecision(candidate, decision: .snoozed, snoozeDays: 30)
-                            }
-                        }
-                        .buttonStyle(MonoGhostButtonStyle())
-
-                        Spacer()
-
-                        Button {
-                            Task { await appState.deepUninstallApp(candidate) }
-                        } label: {
-                            Label("Eliminar", systemImage: "touchid")
-                        }
-                        .buttonStyle(MonoPrimaryButtonStyle())
-                        .disabled(appState.isCleaning)
-                    }
-                }
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.055)))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
-            } else {
-                notchEmptyState(
-                    icon: "checkmark",
-                    title: appState.isAuditingApps ? "Revisando apps…" : "Todo en uso",
-                    subtitle: appState.isAuditingApps
-                        ? "Midiendo último uso de cada app"
-                        : "Ninguna app lleva más de \(appState.settings.unusedAppThresholdDays) días sin abrirse",
-                    busy: appState.isAuditingApps
-                )
-            }
-        }
-    }
-
-    // MARK: - Tab 4: Quick Actions
-
-    private var quickActionsTab: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-            quickActionTile("Analizar Mac", subtitle: "Dev + Basura + Apps", icon: .smartcare) {
-                Task { await appState.runSmartScan() }
-            }
-            quickActionTile("Optimizar RAM", subtitle: appState.isOptimizingRAM ? "Liberando…" : "Liberar caché inactiva", icon: .memory, isDisabled: appState.isOptimizingRAM) {
-                Task { await appState.optimizeRAM() }
-            }
-            quickActionTile(
-                armedAction == "trash" ? "¿Vaciar ya?" : "Vaciar Papelera",
-                subtitle: trashSubtitle,
-                icon: .trash,
-                isDisabled: appState.isCleaning,
-                isArmed: armedAction == "trash"
-            ) {
-                confirmOrArm("trash") {
-                    Task { await appState.emptyTrashNow() }
-                }
-            }
-            quickActionTile("Limpiar GPU", subtitle: "Shaders Metal y WebGPU", icon: .gpu, isDisabled: appState.isCleaning) {
-                Task { await appState.trimGPUCaches() }
-            }
-            quickActionTile("Mapa de Disco", subtitle: "Ver carpetas grandes", icon: .diskmap) {
-                coordinator.isExpanded = false
-                appState.selectedSection = .diskMap
-                appState.onOpenMainWindow?()
-                if appState.diskRoot == nil {
-                    Task { await appState.mapDisk() }
-                }
-            }
-            quickActionTile("Snapshots APFS", subtitle: "Reducir copias locales", icon: .disk) {
-                Task { await appState.thinAPFSSnapshots() }
-            }
-        }
-    }
-
-    private var trashSubtitle: String {
-        let trash = appState.trashContents
-        if !trash.readable { return "Se vaciará con Finder" }
-        if trash.itemCount == 0 { return "Ya está vacía" }
-        return "\(ByteFormat.compact(trash.totalBytes)) · \(trash.itemCount) \(trash.itemCount == 1 ? "elemento" : "elementos")"
-    }
-
-    private func quickActionTile(
-        _ title: String,
-        subtitle: String,
-        icon: Icon3DName,
-        isDisabled: Bool = false,
-        isArmed: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Icon3D(name: icon, size: 32)
-                    .overlay(alignment: .bottomTrailing) {
-                        if isArmed {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white, Mono.danger)
-                                .offset(x: 3, y: 3)
-                        }
-                    }
-
-                VStack(alignment: .leading, spacing: 1.5) {
-                    Text(title)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.system(size: 9.5).monospacedDigit())
-                        .foregroundStyle(Color.white.opacity(0.68))
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56, alignment: .leading)
-            .modifier(NotchCardHover(cornerRadius: 11, isArmed: isArmed, isEnabled: !isDisabled || isArmed))
-            .contentShape(RoundedRectangle(cornerRadius: 11))
-            .opacity(isDisabled && !isArmed ? 0.45 : 1)
-        }
-        .buttonStyle(NotchButtonStyle(hoverScale: 1))
-        .disabled(isDisabled && !isArmed)
     }
 }
 
 /// Tile background that lights up on hover and opens the drill-down when tapped anywhere outside its button.
 private struct NotchTileChrome: ViewModifier {
     let onOpen: (() -> Void)?
+    @Environment(\.notchSurface) private var surface
     @State private var hovering = false
 
     func body(content: Content) -> some View {
+        let active = hovering && onOpen != nil
+        let fillColor: Color = surface.isGlass
+            ? Color.white.opacity(active ? 0.10 : 0.05)
+            : Color(hex: active ? 0x1A1A1D : 0x111114)
+        let borderOpacity = surface.isGlass
+            ? (active ? 0.24 : 0.10)
+            : (active ? 0.26 : 0.10)
+
         content
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(hex: hovering && onOpen != nil ? 0x1A1A1A : 0x121212))
+                    .fill(fillColor)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.white.opacity(hovering && onOpen != nil ? 0.28 : 0.14), lineWidth: 1)
+                    .strokeBorder(Color.white.opacity(borderOpacity), lineWidth: 1)
             )
             .background(alignment: .topLeading) {
-                if hovering && onOpen != nil {
+                if active {
                     Circle()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(Color.white.opacity(0.10))
                         .frame(width: 90, height: 90)
                         .blur(radius: 22)
                         .offset(x: -16, y: -20)
@@ -1129,7 +1032,7 @@ private struct NotchTileChrome: ViewModifier {
                 withAnimation(Mono.fast) { hovering = inside }
             }
             .onTapGesture { onOpen?() }
-            .scaleEffect(hovering && onOpen != nil ? 1.01 : 1)
+            .scaleEffect(active ? 1.01 : 1)
             .animation(Mono.fast, value: hovering)
     }
 }

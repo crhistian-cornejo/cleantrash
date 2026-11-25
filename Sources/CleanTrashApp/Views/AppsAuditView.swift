@@ -134,11 +134,11 @@ struct AppsAuditView: View {
                     TextField("Buscar aplicación…", text: $searchText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .frame(width: 210)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Mono.card(scheme)))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Mono.hairline(scheme), lineWidth: 1))
+                        .frame(width: 220)
+                        .background(Capsule().fill(Mono.card(scheme)))
+                        .overlay(Capsule().strokeBorder(Mono.hairline(scheme), lineWidth: 0.9))
                 }
             }
 
@@ -391,7 +391,13 @@ private struct AppDeepUninstallSheet: View {
                     .buttonStyle(MonoGhostButtonStyle())
                     .disabled(appState.isCleaning)
                 Spacer()
-                Button(appState.isCleaning ? "Uninstalling…" : "Move \(ByteFormat.compact(totalSelectedBytes)) to Trash") {
+                Button(
+                    appState.isCleaning
+                        ? "Desinstalando…"
+                        : (appState.settings.useTrashByDefault
+                            ? "Mover \(ByteFormat.compact(totalSelectedBytes)) a la Papelera"
+                            : "Eliminar \(ByteFormat.compact(totalSelectedBytes))")
+                ) {
                     Task {
                         await appState.deepUninstallApp(app, selectedRelatedPaths: Array(selectedPaths))
                         onDismiss()

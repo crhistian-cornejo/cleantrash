@@ -30,6 +30,8 @@ enum BannerTone: Equatable {
 
 enum DashboardSection: String, CaseIterable, Identifiable {
     case overview = "Inicio"
+    case notchHub = "Centro Notch"
+    case vault = "Bóveda"
     case devRadar = "Dev Radar"
     case diskMap = "Mapa de Disco"
     case systemJunk = "Limpieza"
@@ -42,6 +44,8 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .overview: return "square.grid.2x2"
+        case .notchHub: return "rectangle.topthird.inset.filled"
+        case .vault: return "lock.shield"
         case .devRadar: return "terminal"
         case .diskMap: return "chart.pie"
         case .systemJunk: return "trash"
@@ -54,6 +58,8 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     var icon3D: Icon3DName {
         switch self {
         case .overview: return .smartcare
+        case .notchHub: return .notch
+        case .vault: return .vault
         case .devRadar: return .dev
         case .diskMap: return .diskmap
         case .systemJunk: return .trash
@@ -107,6 +113,11 @@ final class AppState {
     // Coding agents (Claude Code, Codex, Antigravity, T3 Code) reporting through hooks
     let agents = AgentMonitor()
 
+    // Droppy-class Media (Spotify / Apple Music + Synced Lyrics), Productivity & Hardened Password Vault
+    let media = MediaPlayerController()
+    let productivity = ProductivityHub()
+    let vault = VaultController()
+
     // Notch Live Notices
     var activeNotice: NotchNotice?
     var notchNoticeTriggerCount: Int = 0
@@ -118,12 +129,15 @@ final class AppState {
             if oldValue.watchedDevFolders != settings.watchedDevFolders {
                 restartDevWatcher()
             }
+            productivity.clipboardEnabled = settings.clipboardHistoryEnabled
+            productivity.breather.enabled = settings.breatherEnabled
             onSettingsChanged?(settings)
         }
     }
 
     var onSettingsChanged: ((CleanTrashSettings) -> Void)?
     var onOpenMainWindow: (() -> Void)?
+    var onOpenNotchVault: (() -> Void)?
 
     // Services
     private let monitor = SystemMonitor()
@@ -142,6 +156,8 @@ final class AppState {
     private var lastUnusedAppAlertDate: Date = .distantPast
     private var lastAutoRAMOptimizeDate: Date = .distantPast
     private var lastCPUAlertDate: Date = .distantPast
+    private var lastKnownChargingState: Bool?
+    private var lastLowBatteryAlertDate: Date = .distantPast
     private var heavySince: [Int32: Date] = [:]
     private let simulatorController = SimulatorController()
     private let settingsURL: URL
@@ -159,6 +175,54 @@ final class AppState {
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         self.settingsURL = support.appendingPathComponent("CleanTrash/settings.json")
         self.settings = Self.loadSettings(from: settingsURL)
+
+        productivity.clipboardEnabled = settings.clipboardHistoryEnabled
+        productivity.breather.enabled = settings.breatherEnabled
+        productivity.breather.onBreakDue = { [weak self] kind in
+            self?.postNotice(NotchNotice(
+                kind: .cleaned,
+                title: "Breather · \(kind.rawValue)",
+                subtitle: kind.subtitle,
+                primaryActionTitle: "Hecho",
+                targetPath: "breather:\(kind.rawValue)"
+            ), autoDismissAfter: 14.0)
+        }
+        productivity.onAccessoryLowBattery = { [weak self] dev in
+            self?.postNotice(NotchNotice(
+                kind: .warning,
+                title: "\(dev.name) al \(dev.percent)%",
+                subtitle: "Batería baja · conéctalo pronto"
+            ), autoDismissAfter: 9.0)
+        }
+        productivity.onTimerFinished = { [weak self] label in
+            self?.postNotice(NotchNotice(
+                kind: .cleaned,
+                title: "Sesión \(label) completada",
+                subtitle: "Buen trabajo · tómate un respiro"
+            ), autoDismissAfter: 8.0)
+        }
+        productivity.onOCRCompleted = { [weak self] charCount in
+            self?.postNotice(NotchNotice(
+                kind: .cleaned,
+                title: "Texto capturado (OCR)",
+                subtitle: "\(charCount) caracteres copiados al portapapeles"
+            ), autoDismissAfter: 5.0)
+        }
+        productivity.onOCRPermissionNeeded = { [weak self] in
+            self?.report("Para capturar texto directo de pantalla, activa Grabación de pantalla en Ajustes (solo lee el área elegida localmente, sin audio). O copia una captura (⌘⇧⌃4) y pulsa OCR sin permisos.", tone: .warning)
+            self?.postNotice(NotchNotice(
+                kind: .warning,
+                title: "Permiso de pantalla para OCR",
+                subtitle: "Actívalo en Ajustes (sin audio) o usa ⌘⇧⌃4 + OCR",
+                primaryActionTitle: "Ajustes",
+                targetPath: "ocr-permission"
+            ), autoDismissAfter: 9.0)
+        }
+        vault.onStatusMessage = { [weak self] message, tone in
+            self?.report(message, tone: tone)
+        }
+        media.start()
+        productivity.start()
 
         startTelemetryLoop()
         restartDevWatcher()
@@ -290,6 +354,7 @@ final class AppState {
                 if includeProcs {
                     self.checkHeavyCPU(snap)
                 }
+                self.checkBatteryHUD(snap.battery)
 
                 let point = TelemetryPoint(
                     timestamp: snap.timestamp,
@@ -351,6 +416,29 @@ final class AppState {
     }
 
     // MARK: - Wallpaper health
+
+    /// Droppy-style battery charging & low-battery dynamic pill HUDs.
+    private func checkBatteryHUD(_ battery: BatterySnapshot) {
+        guard battery.present else { return }
+        defer { lastKnownChargingState = battery.isPluggedIn }
+
+        if let prev = lastKnownChargingState, !prev && battery.isPluggedIn {
+            postNotice(NotchNotice(
+                kind: .cleaned,
+                title: "Cargando · \(Int(battery.percent))%",
+                subtitle: battery.minutesRemaining.map { "Aprox. \($0) min para carga completa" } ?? "Conectado a corriente"
+            ), autoDismissAfter: 4.5)
+        } else if !battery.isPluggedIn,
+                  battery.percent > 0 && battery.percent <= 20,
+                  Date.now.timeIntervalSince(lastLowBatteryAlertDate) > 900 {
+            lastLowBatteryAlertDate = .now
+            postNotice(NotchNotice(
+                kind: .failed,
+                title: "\(Int(battery.percent))% Batería",
+                subtitle: "Conecta el cargador o activa el modo bajo consumo"
+            ), autoDismissAfter: 7.0)
+        }
+    }
 
     /// Desktops render black when their wallpaper image was deleted (or purged from macOS's temp folder).
     func checkWallpaper() async {
@@ -1026,6 +1114,10 @@ final class AppState {
                 onOpenMainWindow?()
             case .warning where notice.targetPath == "wallpaper":
                 await repairWallpaper()
+            case .warning where notice.targetPath == "ocr-permission":
+                VisionTextCapture.openScreenRecordingSettings()
+            case .cleaned where notice.targetPath?.hasPrefix("breather:") == true:
+                productivity.breather.completeBreak()
             case .cleaned, .warning, .failed:
                 break
             }

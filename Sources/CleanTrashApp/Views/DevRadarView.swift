@@ -111,7 +111,13 @@ struct DevRadarView: View {
                                             Capsule()
                                                 .fill(Mono.ink(scheme).opacity(0.10))
                                             Capsule()
-                                                .fill(Mono.ink(scheme).opacity(active ? 0.94 : 0.28))
+                                                .fill(
+                                                    LinearGradient(
+                                                        colors: [Mono.cpuAccent.opacity(active ? 0.95 : 0.30), Mono.gpuAccent.opacity(active ? 0.90 : 0.25)],
+                                                        startPoint: .leading,
+                                                        endPoint: .trailing
+                                                    )
+                                                )
                                                 .frame(width: max(6, geo.size.width * ratio))
                                         }
                                     }
@@ -150,11 +156,11 @@ struct DevRadarView: View {
                 TextField("Filtrar proyecto o ruta…", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .frame(width: 210)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Mono.card(scheme)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Mono.hairline(scheme), lineWidth: 1))
+                    .frame(width: 220)
+                    .background(Capsule().fill(Mono.card(scheme)))
+                    .overlay(Capsule().strokeBorder(Mono.hairline(scheme), lineWidth: 0.9))
             }
 
             // Artifact List
@@ -212,9 +218,9 @@ struct DevRadarView: View {
                         .foregroundStyle(Mono.ink(scheme))
                     MonoTag(text: item.artifactKind)
                     if item.isActiveBuild {
-                        MonoTag(text: "BUILDING NOW · PROTECTED", inverted: true)
+                        MonoTag(text: "COMPILANDO · PROTEGIDA", inverted: true, tint: Mono.ramAccent)
                     } else if item.ageDays >= appState.settings.devStaleDays {
-                        MonoTag(text: "STALE \(item.ageDays)D")
+                        MonoTag(text: "ANTIGUA \(item.ageDays)D", tint: Mono.junkAccent)
                     }
                 }
                 Text(item.path)

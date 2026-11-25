@@ -15,10 +15,20 @@ enum NotchSnapshotRenderer {
             let coordinator = NotchCoordinator()
             appState.agents.injectPreview()
             appState.agents.clearPreviewPending()
+            appState.media.injectPreview()
+            Mono.snapshotMode = true
             coordinator.isExpanded = true
             for tab in NotchTab.allCases {
-                write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: tab), name: "expanded-\(tab.rawValue)", dir: dir)
+                coordinator.selectedTab = tab
+                write(NotchRootView(appState: appState, coordinator: coordinator), name: "expanded-\(tab.rawValue)", dir: dir)
             }
+            coordinator.selectedTab = .home
+            coordinator.showLyricsTheater = true
+            write(NotchRootView(appState: appState, coordinator: coordinator), name: "expanded-music-lyrics", dir: dir)
+            coordinator.showLyricsTheater = false
+            coordinator.isEditingWidgets = true
+            write(NotchRootView(appState: appState, coordinator: coordinator), name: "expanded-home-edit", dir: dir)
+            coordinator.isEditingWidgets = false
 
             await appState.refreshSimulators()
             for detail in [NotchDetail.cpu, .memory, .gpu, .disk] {
@@ -32,7 +42,7 @@ enum NotchSnapshotRenderer {
                 screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
                 hasHardwareNotch: true, cameraWidth: 185, cameraHeight: 32, menuBarHeight: 32
             )
-            write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: .vitals), name: "expanded-notch-wings", dir: dir)
+            write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: .home), name: "expanded-notch-wings", dir: dir)
 
             Mono.snapshotMode = true
             for scheme in [ColorScheme.dark, .light] {
@@ -45,6 +55,20 @@ enum NotchSnapshotRenderer {
                     name: "overview-hero-\(scheme == .dark ? "dark" : "light")", dir: dir
                 )
             }
+            write(
+                MainDashboardView(appState: appState, onToggleNotch: {})
+                    .frame(width: 1120, height: 740)
+                    .environment(\.colorScheme, .dark),
+                name: "dashboard-overview-dark", dir: dir
+            )
+            appState.selectedSection = .notchHub
+            write(
+                MainDashboardView(appState: appState, onToggleNotch: {})
+                    .frame(width: 1120, height: 740)
+                    .environment(\.colorScheme, .dark),
+                name: "dashboard-hub-dark", dir: dir
+            )
+            appState.selectedSection = .overview
 
             coordinator.isExpanded = false
             appState.activeNotice = nil
@@ -59,7 +83,7 @@ enum NotchSnapshotRenderer {
             appState.agents.injectPreview()
             write(NotchRootView(appState: appState, coordinator: coordinator), name: "agent-permission", dir: dir)
             coordinator.isExpanded = true
-            write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: .agents), name: "expanded-agents-pending", dir: dir)
+            write(NotchRootView(appState: appState, coordinator: coordinator, initialTab: .home), name: "expanded-agents-pending", dir: dir)
             NSApp.terminate(nil)
         }
     }

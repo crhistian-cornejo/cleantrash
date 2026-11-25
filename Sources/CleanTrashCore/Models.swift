@@ -683,6 +683,118 @@ public enum NotchStyleMode: String, CaseIterable, Sendable, Codable {
     case island
 }
 
+public enum NotchSurfaceMode: String, CaseIterable, Sendable, Codable {
+    case obsidian
+    case glass
+    case clearGlass
+
+    public var label: String {
+        switch self {
+        case .obsidian: return "Negro"
+        case .glass: return "Dynamic Glass"
+        case .clearGlass: return "Liquid Glass"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .obsidian: return "moon.fill"
+        case .glass: return "drop.halffull"
+        case .clearGlass: return "drop.fill"
+        }
+    }
+
+    public var isGlass: Bool { self != .obsidian }
+
+    public var next: NotchSurfaceMode {
+        switch self {
+        case .obsidian: return .glass
+        case .glass: return .clearGlass
+        case .clearGlass: return .obsidian
+        }
+    }
+}
+
+/// Modular widgets the user can enable, remove, and drag-reorder on the Home notch shelf.
+public enum NotchWidgetID: String, CaseIterable, Sendable, Codable, Identifiable {
+    case nowPlaying
+    case systemStats
+    case agents
+    case pomodoro
+    case weather
+    case batteries
+    case calendar
+    case devly
+    case clipboard
+    case audio
+    case notes
+    case stayAwake
+    case translate
+    case breather
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .nowPlaying: return "Música"
+        case .systemStats: return "Sistema"
+        case .agents: return "Agentes"
+        case .pomodoro: return "Pomodoro"
+        case .weather: return "Clima"
+        case .batteries: return "Baterías"
+        case .calendar: return "Agenda"
+        case .devly: return "Devly"
+        case .clipboard: return "Portapapeles"
+        case .audio: return "Audio"
+        case .notes: return "Notas"
+        case .stayAwake: return "Despierto"
+        case .translate: return "Traducir"
+        case .breather: return "Breather"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .nowPlaying: return "music.note"
+        case .systemStats: return "gauge.with.dots.needle.67percent"
+        case .agents: return "sparkles"
+        case .pomodoro: return "timer"
+        case .weather: return "sun.max.fill"
+        case .batteries: return "battery.75percent"
+        case .calendar: return "calendar"
+        case .devly: return "chevron.left.forwardslash.chevron.right"
+        case .clipboard: return "doc.on.clipboard.fill"
+        case .audio: return "speaker.wave.2.fill"
+        case .notes: return "note.text"
+        case .stayAwake: return "cup.and.saucer.fill"
+        case .translate: return "translate"
+        case .breather: return "leaf.fill"
+        }
+    }
+
+    /// Preferred horizontal slot weight on the Home widget bar.
+    public var preferredWidth: CGFloat {
+        switch self {
+        case .nowPlaying: return 260
+        case .systemStats: return 238
+        case .agents: return 220
+        case .pomodoro: return 174
+        case .weather: return 172
+        case .batteries: return 252
+        case .calendar: return 240
+        case .devly: return 245
+        case .clipboard: return 255
+        case .audio: return 200
+        case .notes: return 205
+        case .stayAwake: return 146
+        case .translate: return 248
+        case .breather: return 270
+        }
+    }
+
+    public static let defaultLayout: [NotchWidgetID] = [.nowPlaying, .systemStats, .agents]
+}
+
 public enum NotchOpenTrigger: String, CaseIterable, Sendable, Codable {
     case hover
     case click
@@ -697,8 +809,14 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
     public var permanentDeleteDevBuilds: Bool
     public var notchEnabled: Bool
     public var notchStyle: NotchStyleMode
+    public var notchSurface: NotchSurfaceMode
     public var notchTrigger: NotchOpenTrigger
     public var showLiveNotchEars: Bool
+    public var showMusicInNotchEars: Bool
+    public var showLyricsInNotchEar: Bool
+    public var clipboardHistoryEnabled: Bool
+    public var autoOpenShelfOnDrag: Bool
+    public var homeWidgets: [NotchWidgetID]
     public var autoNotifyDevArtifacts: Bool
     public var autoNotifyHighMemory: Bool
     public var autoOptimizeCriticalRAM: Bool
@@ -707,6 +825,8 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
     public var autoAskUnusedApps: Bool
     public var sidebarCollapsed: Bool
     public var monochromeAppearance: String // "dark", "light", "system"
+    public var agentMascotEnabled: Bool
+    public var breatherEnabled: Bool
 
     public init(
         watchedDevFolders: [String] = CleanTrashSettings.defaultDevFolders(),
@@ -717,8 +837,14 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         permanentDeleteDevBuilds: Bool = true,
         notchEnabled: Bool = true,
         notchStyle: NotchStyleMode = .notch,
+        notchSurface: NotchSurfaceMode = .glass,
         notchTrigger: NotchOpenTrigger = .hover,
         showLiveNotchEars: Bool = true,
+        showMusicInNotchEars: Bool = true,
+        showLyricsInNotchEar: Bool = true,
+        clipboardHistoryEnabled: Bool = true,
+        autoOpenShelfOnDrag: Bool = true,
+        homeWidgets: [NotchWidgetID] = NotchWidgetID.defaultLayout,
         autoNotifyDevArtifacts: Bool = true,
         autoNotifyHighMemory: Bool = true,
         autoOptimizeCriticalRAM: Bool = false,
@@ -726,7 +852,9 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         autoCleanMinFreeGB: Double = 30.0,
         autoAskUnusedApps: Bool = true,
         sidebarCollapsed: Bool = false,
-        monochromeAppearance: String = "dark"
+        monochromeAppearance: String = "dark",
+        agentMascotEnabled: Bool = false,
+        breatherEnabled: Bool = true
     ) {
         self.watchedDevFolders = watchedDevFolders
         self.devAlertThresholdGB = devAlertThresholdGB
@@ -736,8 +864,14 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         self.permanentDeleteDevBuilds = permanentDeleteDevBuilds
         self.notchEnabled = notchEnabled
         self.notchStyle = notchStyle
+        self.notchSurface = notchSurface
         self.notchTrigger = notchTrigger
         self.showLiveNotchEars = showLiveNotchEars
+        self.showMusicInNotchEars = showMusicInNotchEars
+        self.showLyricsInNotchEar = showLyricsInNotchEar
+        self.clipboardHistoryEnabled = clipboardHistoryEnabled
+        self.autoOpenShelfOnDrag = autoOpenShelfOnDrag
+        self.homeWidgets = homeWidgets
         self.autoNotifyDevArtifacts = autoNotifyDevArtifacts
         self.autoNotifyHighMemory = autoNotifyHighMemory
         self.autoOptimizeCriticalRAM = autoOptimizeCriticalRAM
@@ -746,6 +880,8 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         self.autoAskUnusedApps = autoAskUnusedApps
         self.sidebarCollapsed = sidebarCollapsed
         self.monochromeAppearance = monochromeAppearance
+        self.agentMascotEnabled = agentMascotEnabled
+        self.breatherEnabled = breatherEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -759,8 +895,15 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         self.permanentDeleteDevBuilds = (try? c.decodeIfPresent(Bool.self, forKey: .permanentDeleteDevBuilds)) ?? d.permanentDeleteDevBuilds
         self.notchEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .notchEnabled)) ?? d.notchEnabled
         self.notchStyle = (try? c.decodeIfPresent(NotchStyleMode.self, forKey: .notchStyle)) ?? d.notchStyle
+        self.notchSurface = (try? c.decodeIfPresent(NotchSurfaceMode.self, forKey: .notchSurface)) ?? d.notchSurface
         self.notchTrigger = (try? c.decodeIfPresent(NotchOpenTrigger.self, forKey: .notchTrigger)) ?? d.notchTrigger
         self.showLiveNotchEars = (try? c.decodeIfPresent(Bool.self, forKey: .showLiveNotchEars)) ?? d.showLiveNotchEars
+        self.showMusicInNotchEars = (try? c.decodeIfPresent(Bool.self, forKey: .showMusicInNotchEars)) ?? d.showMusicInNotchEars
+        self.showLyricsInNotchEar = (try? c.decodeIfPresent(Bool.self, forKey: .showLyricsInNotchEar)) ?? d.showLyricsInNotchEar
+        self.clipboardHistoryEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .clipboardHistoryEnabled)) ?? d.clipboardHistoryEnabled
+        self.autoOpenShelfOnDrag = (try? c.decodeIfPresent(Bool.self, forKey: .autoOpenShelfOnDrag)) ?? d.autoOpenShelfOnDrag
+        let decodedWidgets = (try? c.decodeIfPresent([NotchWidgetID].self, forKey: .homeWidgets)) ?? d.homeWidgets
+        self.homeWidgets = decodedWidgets.isEmpty ? d.homeWidgets : decodedWidgets
         self.autoNotifyDevArtifacts = (try? c.decodeIfPresent(Bool.self, forKey: .autoNotifyDevArtifacts)) ?? d.autoNotifyDevArtifacts
         self.autoNotifyHighMemory = (try? c.decodeIfPresent(Bool.self, forKey: .autoNotifyHighMemory)) ?? d.autoNotifyHighMemory
         self.autoOptimizeCriticalRAM = (try? c.decodeIfPresent(Bool.self, forKey: .autoOptimizeCriticalRAM)) ?? d.autoOptimizeCriticalRAM
@@ -769,6 +912,8 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         self.autoAskUnusedApps = (try? c.decodeIfPresent(Bool.self, forKey: .autoAskUnusedApps)) ?? d.autoAskUnusedApps
         self.sidebarCollapsed = (try? c.decodeIfPresent(Bool.self, forKey: .sidebarCollapsed)) ?? d.sidebarCollapsed
         self.monochromeAppearance = (try? c.decodeIfPresent(String.self, forKey: .monochromeAppearance)) ?? d.monochromeAppearance
+        self.agentMascotEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .agentMascotEnabled)) ?? d.agentMascotEnabled
+        self.breatherEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .breatherEnabled)) ?? d.breatherEnabled
     }
 
     public static func defaultDevFolders() -> [String] {

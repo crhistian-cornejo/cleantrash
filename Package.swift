@@ -20,7 +20,8 @@ let package = Package(
                 .linkedFramework("CoreServices"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("Foundation"),
-                .linkedFramework("LocalAuthentication")
+                .linkedFramework("LocalAuthentication"),
+                .linkedFramework("Security")
             ]
         ),
         .executableTarget(
@@ -31,7 +32,13 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("Charts"),
-                .linkedFramework("IOKit")
+                .linkedFramework("IOKit"),
+                .linkedFramework("Vision"),
+                .linkedFramework("EventKit"),
+                .linkedFramework("CoreAudio"),
+                .linkedFramework("Translation"),
+                .linkedFramework("LocalAuthentication"),
+                .linkedFramework("Security")
             ]
         ),
         .executableTarget(

@@ -1,3 +1,4 @@
+import CleanTrashCore
 import SwiftUI
 
 /// Buttons on the notch: glow + slight lift on hover, press-down on click, pointing-hand cursor.
@@ -57,21 +58,29 @@ struct NotchCardHover: ViewModifier {
     var cornerRadius: CGFloat = 11
     var isArmed = false
     var isEnabled = true
+    @Environment(\.notchSurface) private var surface
     @State private var hovering = false
 
     private var active: Bool { hovering && isEnabled }
 
     func body(content: Content) -> some View {
+        let fillColor: Color = surface.isGlass
+            ? Color.white.opacity(active ? 0.11 : 0.055)
+            : Color(hex: active ? 0x1A1A1D : 0x111114)
+        let borderOpacity = surface.isGlass
+            ? (active ? 0.24 : 0.11)
+            : (active ? 0.26 : 0.10)
+
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color(hex: active ? 0x1C1C1C : 0x121212))
+                    .fill(fillColor)
             )
             .background(alignment: .topLeading) {
                 // Soft spotlight in the corner where the icon sits.
                 if active {
                     Circle()
-                        .fill(Color.white.opacity(0.09))
+                        .fill(Color.white.opacity(0.10))
                         .frame(width: 70, height: 70)
                         .blur(radius: 18)
                         .offset(x: -10, y: -14)
@@ -82,7 +91,7 @@ struct NotchCardHover: ViewModifier {
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
-                        isArmed ? Mono.danger.opacity(0.8) : Color.white.opacity(active ? 0.3 : 0.14),
+                        isArmed ? Mono.danger.opacity(0.8) : Color.white.opacity(borderOpacity),
                         lineWidth: 1
                     )
             )

@@ -40,7 +40,7 @@ struct MacHealth: Equatable {
 /// Pre-rendered 3D glass icons (generated with Nano Banana, keyed to transparency by
 /// `scripts/process-icons.swift`). Shipped in `Contents/Resources/Icons3D`.
 enum Icon3DName: String, CaseIterable {
-    case mac, memory, cpu, gpu, disk, dev, trash, apps, smartcare, diskmap, performance, settings
+    case mac, memory, cpu, gpu, disk, dev, trash, apps, smartcare, diskmap, performance, settings, notch, vault
 
     /// Closest rendered icon to use while this one hasn't been generated yet.
     var standIn: Icon3DName? {
@@ -67,6 +67,8 @@ enum Icon3DName: String, CaseIterable {
         case .diskmap: return "chart.pie"
         case .performance: return "bolt"
         case .settings: return "gearshape"
+        case .notch: return "rectangle.topthird.inset.filled"
+        case .vault: return "lock.shield.fill"
         }
     }
 }
@@ -109,46 +111,25 @@ enum Icon3DStore {
     }()
 }
 
-/// A 3D glass icon with a soft contact shadow (lighter on light surfaces).
+/// Interactive Layered Frosted Glass icon (adapted from the Glass Dock motion system).
+/// Each icon renders solid vibrant colored geometry behind a translucent frosted glass pane
+/// with bespoke spring micro-interactions on hover or active state.
 struct Icon3D: View {
     let name: Icon3DName
     var size: CGFloat = 32
-    @Environment(\.colorScheme) private var scheme
+    var isActive: Bool = false
+    var externalHover: Bool = false
+    var interactive: Bool = true
+    var tiltX: Double = 0
 
     var body: some View {
-        Group {
-            if let image = Icon3DStore.image(name) {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .antialiased(true)
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                // Glass-chip stand-in that matches the rendered set's frosted white look.
-                ZStack {
-                    RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                        .fill(LinearGradient(colors: [Color(white: 0.96), Color(white: 0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                                .strokeBorder(LinearGradient(colors: [.white, Color(white: 0.6)], startPoint: .top, endPoint: .bottom), lineWidth: max(1, size * 0.03))
-                        )
-                        .padding(size * 0.1)
-                    Image(systemName: name.fallbackSymbol)
-                        .font(.system(size: size * 0.42, weight: .semibold))
-                        .foregroundStyle(LinearGradient(colors: [Color(white: 0.45), Color(white: 0.25)], startPoint: .top, endPoint: .bottom))
-                        .shadow(color: .white.opacity(0.8), radius: 0, y: max(0.5, size * 0.015))
-                }
-            }
-        }
-        .frame(width: size, height: size)
-        // White glass disappears on light surfaces: drop it to brushed silver there.
-        .brightness(scheme == .light ? -0.2 : 0)
-        .contrast(scheme == .light ? 1.15 : 1)
-        .shadow(
-            color: .black.opacity(scheme == .light ? 0.1 : 0.4),
-            radius: size * (scheme == .light ? 0.04 : 0.08),
-            y: size * (scheme == .light ? 0.025 : 0.06)
+        GlassLayeredIcon(
+            name: name,
+            size: size,
+            isActive: isActive,
+            externalHover: externalHover,
+            interactive: interactive,
+            tiltX: tiltX
         )
-        .accessibilityHidden(true)
     }
 }

@@ -76,16 +76,105 @@ struct ProviderLogo: View {
     }
 }
 
+// MARK: - Smooth Marquee Carousel Text (for long song titles, artists & lyrics inside Notch ears)
+
+struct MarqueeText: View {
+    let text: String
+    let font: Font
+    let color: Color
+    var speed: Double = 24 // pts per second
+    var pauseDuration: Double = 1.6
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var textWidth: CGFloat = 0
+    @State private var containerWidth: CGFloat = 0
+
+    private var needsScroll: Bool {
+        !Mono.snapshotMode && !reduceMotion && textWidth > containerWidth + 4 && containerWidth > 10
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let availW = geo.size.width
+            ZStack(alignment: .leading) {
+                if needsScroll {
+                    let gap: CGFloat = 28
+                    let cycleDistance = textWidth + gap
+                    let scrollDuration = Double(cycleDistance) / max(10, speed)
+                    let totalCycle = pauseDuration + scrollDuration
+
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                        let t = timeline.date.timeIntervalSinceReferenceDate
+                            .truncatingRemainder(dividingBy: max(0.5, totalCycle))
+                        let progress = max(0, (t - pauseDuration) / max(0.1, scrollDuration))
+                        let offsetX = -CGFloat(progress) * cycleDistance
+
+                        HStack(spacing: gap) {
+                            Text(text).font(font).foregroundStyle(color).fixedSize()
+                            Text(text).font(font).foregroundStyle(color).fixedSize()
+                        }
+                        .offset(x: offsetX)
+                    }
+                } else {
+                    Text(text)
+                        .font(font)
+                        .foregroundStyle(color)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .frame(width: availW, alignment: .leading)
+            .clipped()
+            .mask(
+                Group {
+                    if needsScroll {
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.0),
+                                .init(color: .black, location: 0.07),
+                                .init(color: .black, location: 0.90),
+                                .init(color: .clear, location: 1.0)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    } else {
+                        Color.black
+                    }
+                }
+            )
+            .onAppear { containerWidth = availW }
+            .onChange(of: availW) { _, newW in containerWidth = newW }
+        }
+        .frame(height: 15)
+        .background(
+            Text(text)
+                .font(font)
+                .fixedSize()
+                .hidden()
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { textWidth = proxy.size.width }
+                            .onChange(of: text) { _, _ in textWidth = proxy.size.width }
+                            .onChange(of: proxy.size.width) { _, w in textWidth = w }
+                    }
+                )
+        )
+    }
+}
+
 // MARK: - Left ear: live metrics
 
-/// RAM · CPU · GPU with their 3D icons, numbers only. Amber from 80 %, red from 92 %.
+/// RAM · CPU · GPU with their 3D glass icons, refined compact spacing so the closed notch
+/// never crowds the concave curve or the system menu bar.
 struct NotchMetricsEar: View {
     let memory: Double
     let cpu: Double
     let gpu: Double
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 5.5) {
             metric(.memory, memory, label: "RAM")
             metric(.cpu, cpu, label: "CPU")
             metric(.gpu, gpu, label: "GPU")
@@ -94,10 +183,10 @@ struct NotchMetricsEar: View {
 
     private func metric(_ icon: Icon3DName, _ value: Double, label: String) -> some View {
         let percent = Int(min(999, max(0, value)).rounded())
-        return HStack(spacing: 2.5) {
+        return HStack(spacing: 2) {
             Icon3D(name: icon, size: 15)
             Text("\(percent)%")
-                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
                 .foregroundStyle(Self.tint(value))
                 .contentTransition(.numericText(value: Double(percent)))
                 .lineLimit(1)
@@ -113,6 +202,109 @@ struct NotchMetricsEar: View {
         if value >= 92 { return Mono.danger }
         if value >= 80 { return Mono.caution }
         return Color.white.opacity(0.86)
+    }
+}
+
+// MARK: - Right ear (Music): Mini Album Artwork + Live Lyric / Track + Equalizer
+
+struct NotchMusicEar: View {
+    let media: MediaPlayerController
+    let showLyrics: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var labelKey: String {
+        if showLyrics, let lyric = media.currentLyricLine {
+            return "lyric:\(media.activeLyricIndex ?? -1):\(lyric)"
+        }
+        return "track:\(media.track?.id ?? ""):\(media.track?.title ?? "")"
+    }
+
+    private var displayedText: String {
+        if showLyrics, let lyric = media.currentLyricLine {
+            return lyric
+        }
+        return media.track?.title ?? ""
+    }
+
+    var body: some View {
+        if let track = media.track {
+            HStack(spacing: 6) {
+                Group {
+                    if let art = media.artwork {
+                        Image(nsImage: art)
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        LinearGradient(
+                            colors: [media.palette.primary, media.palette.secondary],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .overlay {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 8.5, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+                .frame(width: 18, height: 18)
+                .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                        .strokeBorder(.white.opacity(0.25), lineWidth: 0.6)
+                )
+
+                ZStack(alignment: .leading) {
+                    Text(displayedText)
+                        .id(labelKey)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(
+                            showLyrics && media.currentLyricLine != nil
+                                ? Color.white.opacity(0.95)
+                                : Color.white.opacity(0.86)
+                        )
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .transition(.asymmetric(
+                            insertion: .blurMorph(scale: 0.92, y: 6),
+                            removal: .blurMorph(scale: 0.92, y: -6)
+                        ))
+                }
+                .animation(reduceMotion ? .none : Mono.betweenSpring, value: labelKey)
+
+                Spacer(minLength: 2)
+
+                AudioVisualizerBars(
+                    isPlaying: media.isPlaying,
+                    color: media.palette.primary,
+                    secondaryColor: media.palette.secondary,
+                    barCount: 3,
+                    maxHeight: 11,
+                    barWidth: 2
+                )
+            }
+            .help("\(track.title) — \(track.artist)")
+        }
+    }
+}
+
+struct NotchTimerEar: View {
+    let formatted: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "timer")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Mono.healthy)
+            Text("\(label) · \(formatted)")
+                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.9))
+                .contentTransition(.numericText(countsDown: true))
+                .lineLimit(1)
+        }
     }
 }
 
@@ -175,7 +367,7 @@ struct NotchAgentsEar: View {
         guard let lead else { return "none" }
         if lead.phase == .needsPermission { return "ask:\(lead.id)" }
         if lead.doneAt != nil { return "done:\(lead.id)" }
-        return "w:\(lead.id):\(activity(of: lead))"
+        return "w:\(lead.id):\(Self.liveActivity(lead))"
     }
 
     private var label: some View {
@@ -195,24 +387,40 @@ struct NotchAgentsEar: View {
     }
 
     private func labelText(_ lead: AgentSession) -> Text {
-        let muted = Color.white.opacity(0.5)
         if lead.phase == .needsPermission {
             return Text("Permiso").foregroundStyle(EarTint.ask)
-                + Text(" · \(AgentToolLabel.label(for: lead.tool))").foregroundStyle(muted)
         }
         if lead.doneAt != nil {
-            return Text("\(Image(systemName: "checkmark")) Done").foregroundStyle(EarTint.done)
-                + Text(" · \(lead.project)").foregroundStyle(muted)
+            return Text("\(Image(systemName: "checkmark")) Listo").foregroundStyle(EarTint.done)
         }
-        return Text(lead.project).foregroundStyle(Color.white.opacity(0.9))
-            + Text(" · \(activity(of: lead))").foregroundStyle(muted)
+        if lead.phase == .toolFailed {
+            return Text("Error").foregroundStyle(Mono.danger.opacity(0.88))
+        }
+        return Text(Self.liveActivity(lead)).foregroundStyle(Color.white.opacity(0.88))
     }
 
-    private func activity(of session: AgentSession) -> String {
+    /// Clean, direct verb for the closed Notch ear ("Pensando…", "Editando…", "Ejecutando…", "Trabajando…")
+    /// without cluttering the ear with raw shell commands or truncated file paths.
+    static func liveActivity(_ session: AgentSession) -> String {
         switch session.phase {
-        case .runningTool, .toolDone, .toolFailed: return AgentToolLabel.label(for: session.tool)
-        case .compacting: return "Compactando"
-        default: return "Pensando"
+        case .compacting:
+            return "Compactando…"
+        case .runningTool, .toolDone:
+            switch AgentToolLabel.label(for: session.tool) {
+            case "Terminal": return "Ejecutando…"
+            case "Leer": return "Leyendo…"
+            case "Editar": return "Editando…"
+            case "Escribir": return "Escribiendo…"
+            case "Buscar": return "Buscando…"
+            case "Web": return "Navegando…"
+            case "Plan": return "Planificando…"
+            case "Subagente": return "Trabajando…"
+            default: return "Trabajando…"
+            }
+        case .toolFailed:
+            return "Error"
+        default:
+            return "Pensando…"
         }
     }
 }

@@ -91,9 +91,15 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <key>NSDocumentsFolderUsageDescription</key>
   <string>CleanTrash maps disk usage and finds large build artifacts.</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>CleanTrash pide a Finder vaciar la Papelera cuando hay elementos bloqueados o protegidos.</string>
+  <string>CleanTrash controla Spotify y Apple Music desde el Notch y pide a Finder vaciar la Papelera cuando hay elementos protegidos.</string>
   <key>NSDownloadsFolderUsageDescription</key>
   <string>CleanTrash detects old installers (.dmg/.pkg) and maps disk usage.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>CleanTrash muestra tus próximos eventos del día en el widget de Agenda del Notch.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>CleanTrash muestra tus próximos eventos del día en el widget de Agenda del Notch.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>CleanTrash lee el texto del área que selecciones en pantalla usando Apple Vision de forma 100% local (no graba video ni audio).</string>
 </dict>
 </plist>
 EOF
@@ -146,6 +152,6 @@ for arg in "${@:2}"; do
     echo "→ Launching ${APP_NAME}..."
     pkill -x "$APP_NAME" >/dev/null 2>&1 || true
     sleep 0.3
-    open "$APP_BUNDLE"
+    open -g "$APP_BUNDLE" --args --background
   fi
 done

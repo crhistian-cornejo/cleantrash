@@ -7,11 +7,21 @@ struct OverviewView: View {
     @Environment(\.colorScheme) private var scheme
     @State private var confirmSmartClean = false
 
+    private var disk: DiskSnapshot { appState.telemetry.disk }
+    private var totalBytes: UInt64 { max(1, disk.totalBytes) }
+    private var appsBytes: UInt64 { appState.installedApps.reduce(0) { $0 + $1.totalSizeBytes } }
+    private var cleanableBytes: UInt64 { appState.totalSmartReclaimableBytes + appState.trashContents.totalBytes }
+    private var systemOtherBytes: UInt64 {
+        let known = appsBytes + cleanableBytes
+        return disk.usedBytes > known ? disk.usedBytes - known : 0
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 headerHero
                 bentoTelemetryGrid
+                liveNotchQuickStrip
                 if !appState.telemetry.externalVolumes.isEmpty {
                     externalVolumesStrip
                 }
@@ -22,101 +32,150 @@ struct OverviewView: View {
         }
     }
 
-    // MARK: - Smart Care Hero
+    // MARK: - Smart Care Hero + Droppy Dot-Matrix Storage Visualizer
 
     var headerHero: some View {
         let health = appState.macHealth
         let tint = health.tint(for: scheme)
-        return HStack(alignment: .center, spacing: 26) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(scheme == .dark ? 0.18 : 0.12))
-                    .frame(width: 150, height: 150)
-                    .blur(radius: 40)
-                Icon3D(name: .smartcare, size: 128)
-            }
-            .frame(width: 150, height: 140)
-
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 6) {
-                    Circle().fill(tint).frame(width: 7, height: 7)
-                    (Text("Estado del Mac: ") + Text(health.label).foregroundStyle(tint))
-                        .font(.system(size: 12.5, weight: .semibold))
-                    if let reason = health.reason {
-                        Text("· \(reason)")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(Mono.muted(scheme))
-                            .lineLimit(1)
-                    }
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(tint.opacity(scheme == .dark ? 0.22 : 0.14))
+                        .frame(width: 140, height: 140)
+                        .blur(radius: 36)
+                    Icon3D(name: .smartcare, size: 118)
                 }
-                .foregroundStyle(Mono.ink(scheme))
+                .frame(width: 138, height: 126)
 
-                Text("Cuidado inteligente")
-                    .font(.system(size: 34, weight: .light))
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Circle().fill(tint).frame(width: 7, height: 7)
+                        (Text("Estado del Mac: ") + Text(health.label).foregroundStyle(tint))
+                            .font(.system(size: 12.5, weight: .semibold))
+                        if let reason = health.reason {
+                            Text("· \(reason)")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Mono.muted(scheme))
+                                .lineLimit(1)
+                        }
+                    }
                     .foregroundStyle(Mono.ink(scheme))
 
-                Text(appState.totalSmartReclaimableBytes > 0
-                     ? "\(ByteFormat.compact(appState.totalSmartReclaimableBytes)) listos para liberar. Un mantenimiento rápido que prioriza lo esencial."
-                     : "Tu Mac está limpio y ligero. Analiza de nuevo cuando quieras.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Mono.muted(scheme))
-                    .contentTransition(.numericText())
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("Cuidado inteligente")
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundStyle(Mono.ink(scheme))
 
-                Text("Proyectos \(ByteFormat.compact(appState.reclaimableDevBytes)) · Sistema \(ByteFormat.compact(appState.reclaimableJunkBytes)) · Papelera \(ByteFormat.compact(appState.trashContents.totalBytes)) · \(appState.unusedApps.count) apps sin usar")
-                    .font(.system(size: 11.5).monospacedDigit())
-                    .foregroundStyle(Mono.subtle(scheme))
+                    Text(appState.totalSmartReclaimableBytes > 0
+                         ? "\(ByteFormat.compact(appState.totalSmartReclaimableBytes)) listos para liberar. Un mantenimiento rápido que prioriza lo esencial."
+                         : "Tu Mac está limpio y ligero. Analiza de nuevo cuando quieras.")
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Mono.muted(scheme))
+                        .contentTransition(.numericText())
+                        .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 10) {
-                    Button {
-                        confirmSmartClean = true
-                    } label: {
-                        Label(
-                            appState.isCleaning ? (appState.cleaningLabel ?? "Limpiando…") : "Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))",
-                            systemImage: "sparkles"
-                        )
-                    }
-                    .buttonStyle(MonoPrimaryButtonStyle())
-                    .disabled(appState.totalSmartReclaimableBytes == 0 || appState.isCleaning)
-                    .confirmationDialog(
-                        "¿Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))?",
-                        isPresented: $confirmSmartClean,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Limpiar ahora", role: .destructive) {
-                            Task { await appState.runSmartClean() }
-                        }
-                        Button("Revisar primero") { appState.selectedSection = .systemJunk }
-                        Button("Cancelar", role: .cancel) {}
-                    } message: {
-                        Text(smartCleanMessage)
-                    }
-
-                    Button {
-                        Task { await appState.runSmartScan() }
-                    } label: {
-                        Label(
-                            appState.isScanningDev || appState.isScanningJunk ? "Analizando…" : "Analizar",
-                            systemImage: "magnifyingglass"
-                        )
-                    }
-                    .buttonStyle(MonoGhostButtonStyle())
-                    .disabled(appState.isScanningDev || appState.isScanningJunk)
-
-                    Text("\(appState.telemetry.gpu.modelName) · \(appState.telemetry.coreCount) núcleos")
-                        .font(.system(size: 11))
+                    Text("Proyectos \(ByteFormat.compact(appState.reclaimableDevBytes)) · Sistema \(ByteFormat.compact(appState.reclaimableJunkBytes)) · Papelera \(ByteFormat.compact(appState.trashContents.totalBytes)) · \(appState.unusedApps.count) apps sin usar")
+                        .font(.system(size: 11).monospacedDigit())
                         .foregroundStyle(Mono.subtle(scheme))
-                        .padding(.leading, 4)
+
+                    HStack(spacing: 10) {
+                        Button {
+                            confirmSmartClean = true
+                        } label: {
+                            Label(
+                                appState.isCleaning ? (appState.cleaningLabel ?? "Limpiando…") : "Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))",
+                                systemImage: "sparkles"
+                            )
+                        }
+                        .buttonStyle(MonoPrimaryButtonStyle())
+                        .disabled(appState.totalSmartReclaimableBytes == 0 || appState.isCleaning)
+                        .confirmationDialog(
+                            "¿Limpiar \(ByteFormat.compact(appState.totalSmartReclaimableBytes))?",
+                            isPresented: $confirmSmartClean,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Limpiar ahora", role: .destructive) {
+                                Task { await appState.runSmartClean() }
+                            }
+                            Button("Revisar primero") { appState.selectedSection = .systemJunk }
+                            Button("Cancelar", role: .cancel) {}
+                        } message: {
+                            Text(smartCleanMessage)
+                        }
+
+                        Button {
+                            Task { await appState.runSmartScan() }
+                        } label: {
+                            Label(
+                                appState.isScanningDev || appState.isScanningJunk ? "Analizando…" : "Analizar",
+                                systemImage: "magnifyingglass"
+                            )
+                        }
+                        .buttonStyle(MonoGhostButtonStyle())
+                        .disabled(appState.isScanningDev || appState.isScanningJunk)
+
+                        Text("\(appState.telemetry.gpu.modelName) · \(appState.telemetry.coreCount) núcleos")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Mono.subtle(scheme))
+                            .padding(.leading, 4)
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
+
+                Spacer(minLength: 0)
             }
 
-            Spacer(minLength: 0)
+            // Droppy-Matched 5-Row Glowing Dot-Matrix Storage Visualizer
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 14) {
+                    HStack(spacing: 6) {
+                        Text(ByteFormat.compact(disk.usedBytes))
+                            .font(.system(size: 13, weight: .bold).monospacedDigit())
+                            .foregroundStyle(Mono.ink(scheme))
+                        Text("usados de \(ByteFormat.compact(disk.totalBytes))")
+                            .font(.system(size: 11.5).monospacedDigit())
+                            .foregroundStyle(Mono.muted(scheme))
+                    }
+                    Spacer()
+                    dotLegend("Apps", value: ByteFormat.compact(appsBytes), color: Mono.appsAccent)
+                    dotLegend("Basura", value: ByteFormat.compact(cleanableBytes), color: Mono.junkAccent)
+                    dotLegend("Sistema", value: ByteFormat.compact(systemOtherBytes), color: Mono.ink(scheme).opacity(0.62))
+                    dotLegend("Libre", value: ByteFormat.compact(disk.availableBytes), color: Mono.ink(scheme).opacity(0.22))
+                }
+
+                DotMatrixStorageBar(
+                    appsFraction: Double(appsBytes) / Double(totalBytes),
+                    cleanableFraction: Double(cleanableBytes) / Double(totalBytes),
+                    systemFraction: Double(systemOtherBytes) / Double(totalBytes),
+                    forceDark: false
+                )
+                .frame(height: 36)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Mono.ink(scheme).opacity(scheme == .dark ? 0.045 : 0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(Mono.hairline(scheme), lineWidth: 0.75)
+                )
+            }
         }
         .padding(.horizontal, 22)
-        .padding(.vertical, 20)
-        .monoCard(radius: 18, glass: true)
+        .padding(.vertical, 18)
+        .monoCard(radius: 20, glass: true)
         .animation(Mono.betweenSpring, value: health)
+    }
+
+    private func dotLegend(_ label: String, value: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text("\(label) \(value)")
+                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                .foregroundStyle(Mono.muted(scheme))
+                .lineLimit(1)
+        }
     }
 
     private var smartCleanMessage: String {
@@ -128,19 +187,24 @@ struct OverviewView: View {
         return "\(dev) artefactos de proyectos y \(junk) elementos del sistema. \(destination)"
     }
 
-    // MARK: - 6-Tile Monochrome Bento Grid (Disk, RAM, GPU, CPU, Network, Battery)
+    // MARK: - 6-Tile Notch-Matched Glowing 3D Ring Bento Grid
 
     private var bentoTelemetryGrid: some View {
         let cols = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+        let cpu = appState.telemetry.cpuTotalPercent
+        let ram = appState.telemetry.memory.usedPercent
+        let gpu = appState.telemetry.gpu.deviceUtilizationPercent
+        let bat = appState.telemetry.battery
+
         return LazyVGrid(columns: cols, spacing: 14) {
             // 1. Storage
-            bentoCard(
-                icon: "internaldrive",
+            bento3DCard(
                 icon3D: .disk,
-                label: appState.telemetry.disk.volumeName,
-                primaryValue: ByteFormat.compact(appState.telemetry.disk.availableBytes),
-                subtitle: "libres de \(ByteFormat.compact(appState.telemetry.disk.totalBytes)) · purgable \(ByteFormat.compact(appState.telemetry.disk.purgeableBytes))",
-                progress: appState.telemetry.disk.usedPercent / 100.0,
+                label: disk.volumeName,
+                primaryValue: ByteFormat.compact(disk.availableBytes),
+                subtitle: "libres de \(ByteFormat.compact(disk.totalBytes)) · purgable \(ByteFormat.compact(disk.purgeableBytes))",
+                percent: disk.usedPercent,
+                tint: disk.usedPercent >= 90 ? Mono.danger : Mono.appsAccent,
                 ctaTitle: "Ver mapa"
             ) {
                 appState.selectedSection = .diskMap
@@ -150,13 +214,13 @@ struct OverviewView: View {
             }
 
             // 2. RAM + Optimize
-            bentoCard(
-                icon: "memorychip",
+            bento3DCard(
                 icon3D: .memory,
                 label: "Memoria · \(appState.telemetry.memory.pressure.label)",
-                primaryValue: "\(Int(appState.telemetry.memory.usedPercent))%",
+                primaryValue: "\(Int(ram))%",
                 subtitle: "\(ByteFormat.memory(appState.telemetry.memory.usedBytes)) / \(ByteFormat.memory(appState.telemetry.memory.totalBytes)) · Caché \(ByteFormat.memory(appState.telemetry.memory.cachedFilesBytes))",
-                progress: appState.telemetry.memory.usedPercent / 100.0,
+                percent: ram,
+                tint: ram >= 88 ? Mono.caution : Mono.ramAccent,
                 ctaTitle: appState.isOptimizingRAM ? "Optimizando…" : "Optimizar RAM",
                 ctaDisabled: appState.isOptimizingRAM
             ) {
@@ -164,13 +228,13 @@ struct OverviewView: View {
             }
 
             // 3. GPU + Trim
-            bentoCard(
-                icon: "cpu.fill",
+            bento3DCard(
                 icon3D: .gpu,
                 label: "GPU · \(appState.telemetry.gpu.modelName)",
-                primaryValue: "\(Int(appState.telemetry.gpu.deviceUtilizationPercent))%",
+                primaryValue: "\(Int(gpu))%",
                 subtitle: "Render \(Int(appState.telemetry.gpu.rendererUtilizationPercent))% · En uso \(ByteFormat.memory(appState.telemetry.gpu.inUseMemoryBytes))",
-                progress: appState.telemetry.gpu.deviceUtilizationPercent / 100.0,
+                percent: gpu,
+                tint: gpu >= 90 ? Mono.caution : Mono.gpuAccent,
                 ctaTitle: "Limpiar caché",
                 ctaDisabled: appState.isCleaning
             ) {
@@ -178,42 +242,260 @@ struct OverviewView: View {
             }
 
             // 4. CPU
-            bentoCard(
-                icon: "cpu",
+            bento3DCard(
                 icon3D: .cpu,
                 label: "CPU · \(appState.telemetry.thermalState)",
-                primaryValue: "\(Int(appState.telemetry.cpuTotalPercent))%",
+                primaryValue: "\(Int(cpu))%",
                 subtitle: "Usuario \(Int(appState.telemetry.cpuUserPercent))% · Sistema \(Int(appState.telemetry.cpuSystemPercent))% · \(appState.telemetry.coreCount) núcleos",
-                progress: appState.telemetry.cpuTotalPercent / 100.0,
+                percent: cpu,
+                tint: cpu >= 88 ? Mono.danger : Mono.cpuAccent,
                 ctaTitle: "Procesos"
             ) {
                 appState.selectedSection = .performance
             }
 
             // 5. Network
-            bentoCard(
-                icon: "wifi",
-                label: "RED",
+            bentoSymbolCard(
+                symbol: "wifi",
+                label: "Red en vivo",
                 primaryValue: ByteFormat.speed(appState.telemetry.network.bytesInPerSec),
                 subtitle: "Bajada ↓ · subida ↑ \(ByteFormat.speed(appState.telemetry.network.bytesOutPerSec))",
-                progress: min(1.0, appState.telemetry.network.bytesInPerSec / 50_000_000.0),
+                percent: min(100, (appState.telemetry.network.bytesInPerSec / 50_000_000.0) * 100.0),
+                tint: Mono.networkAccent,
                 ctaTitle: "Vaciar DNS"
             ) {
                 Task { await appState.flushDNS() }
             }
 
             // 6. Battery
-            let bat = appState.telemetry.battery
-            bentoCard(
-                icon: bat.isCharging ? "battery.100.bolt" : "battery.100",
-                label: "BATERÍA",
+            bentoSymbolCard(
+                symbol: bat.isCharging ? "battery.100.bolt" : "battery.100",
+                label: "Batería",
                 primaryValue: bat.present ? "\(Int(bat.percent))%" : "Corriente",
                 subtitle: batterySubtitle(bat),
-                progress: bat.present ? bat.percent / 100.0 : 1.0,
+                percent: bat.present ? bat.percent : 100,
+                tint: bat.present && bat.percent <= 20 && !bat.isCharging ? Mono.danger : Mono.batteryAccent,
                 ctaTitle: "Detalles"
             ) {
                 appState.selectedSection = .performance
             }
+        }
+    }
+
+    private func bento3DCard(
+        icon3D: Icon3DName,
+        label: String,
+        primaryValue: String,
+        subtitle: String,
+        percent: Double,
+        tint: Color,
+        ctaTitle: String,
+        ctaDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 11) {
+                MetricRing3D(icon: icon3D, percent: percent, tint: tint, size: 46)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Mono.muted(scheme))
+                        .lineLimit(1)
+                    Text(primaryValue)
+                        .font(.system(size: 22, weight: .bold).monospacedDigit())
+                        .foregroundStyle(Mono.ink(scheme))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .contentTransition(.numericText())
+                }
+                Spacer(minLength: 4)
+                Button(ctaTitle, action: action)
+                    .buttonStyle(MonoGhostButtonStyle())
+                    .disabled(ctaDisabled)
+            }
+
+            MonoProgressBar(value: percent / 100.0, height: 4.5, tint: tint)
+
+            Text(subtitle)
+                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                .foregroundStyle(Mono.muted(scheme))
+                .lineLimit(1)
+        }
+        .padding(15)
+        .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124, alignment: .topLeading)
+        .monoCard(radius: 16)
+    }
+
+    private func bentoSymbolCard(
+        symbol: String,
+        label: String,
+        primaryValue: String,
+        subtitle: String,
+        percent: Double,
+        tint: Color,
+        ctaTitle: String,
+        ctaDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 11) {
+                MetricSymbolRing(symbol: symbol, percent: percent, tint: tint, size: 46)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Mono.muted(scheme))
+                        .lineLimit(1)
+                    Text(primaryValue)
+                        .font(.system(size: 22, weight: .bold).monospacedDigit())
+                        .foregroundStyle(Mono.ink(scheme))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .contentTransition(.numericText())
+                }
+                Spacer(minLength: 4)
+                Button(ctaTitle, action: action)
+                    .buttonStyle(MonoGhostButtonStyle())
+                    .disabled(ctaDisabled)
+            }
+
+            MonoProgressBar(value: percent / 100.0, height: 4.5, tint: tint)
+
+            Text(subtitle)
+                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                .foregroundStyle(Mono.muted(scheme))
+                .lineLimit(1)
+        }
+        .padding(15)
+        .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124, alignment: .topLeading)
+        .monoCard(radius: 16)
+    }
+
+    // MARK: - Live Notch Quick Strip (Música · Focus / Despierto · Centro Notch)
+
+    private var liveNotchQuickStrip: some View {
+        let media = appState.media
+        let hub = appState.productivity
+
+        return HStack(spacing: 14) {
+            // 1. Live Now Playing Mini-Card
+            HStack(spacing: 11) {
+                if let track = media.track {
+                    if let art = media.artwork {
+                        Image(nsImage: art)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    } else {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(media.palette.primary.opacity(0.3))
+                            .frame(width: 40, height: 40)
+                            .overlay { Image(systemName: "music.note").foregroundStyle(Mono.ink(scheme)) }
+                    }
+                    VStack(alignment: .leading, spacing: 1.5) {
+                        Text(track.title)
+                            .font(.system(size: 12.5, weight: .bold))
+                            .foregroundStyle(Mono.ink(scheme))
+                            .lineLimit(1)
+                        Text(media.currentLyricLine ?? track.artist)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Mono.muted(scheme))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    HStack(spacing: 6) {
+                        Button { media.togglePlayPause() } label: {
+                            Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Mono.primaryInk(scheme))
+                                .frame(width: 28, height: 28)
+                                .background(Circle().fill(Mono.primaryFill(scheme)))
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+
+                        Button { media.nextTrack() } label: {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Mono.ink(scheme))
+                                .frame(width: 26, height: 26)
+                                .background(Circle().fill(Mono.ink(scheme).opacity(0.09)))
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                    }
+                } else {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Mono.muted(scheme))
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Mono.ink(scheme).opacity(0.08)))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Música y Letras")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(Mono.ink(scheme))
+                        Text("Spotify y Apple Music en vivo")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Mono.muted(scheme))
+                    }
+                    Spacer()
+                    Button("Abrir") { appState.selectedSection = .notchHub }
+                        .buttonStyle(MonoGhostButtonStyle())
+                }
+            }
+            .padding(13)
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .monoCard(radius: 15)
+
+            // 2. Focus + Stay Awake + Quick Actions
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Mono.junkAccent)
+                        Text("Focus · \(hub.timerFormatted)")
+                            .font(.system(size: 12.5, weight: .bold).monospacedDigit())
+                            .foregroundStyle(Mono.ink(scheme))
+                    }
+                    Text("\(hub.shelfItems.count) archivos en Bandeja · \(hub.clipboardEntries.count) clips")
+                        .font(.system(size: 10.5).monospacedDigit())
+                        .foregroundStyle(Mono.muted(scheme))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Button {
+                    hub.toggleStayAwake()
+                } label: {
+                    Image(systemName: hub.isStayAwakeEnabled ? "cup.and.saucer.fill" : "cup.and.saucer")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(hub.isStayAwakeEnabled ? .black : Mono.ink(scheme))
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(hub.isStayAwakeEnabled ? Mono.junkAccent : Mono.ink(scheme).opacity(0.09)))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help(hub.isStayAwakeEnabled ? "Desactivar Mantener despierta" : "Mantener Mac despierta")
+
+                Button {
+                    Task { await hub.captureScreenText() }
+                } label: {
+                    Label("OCR", systemImage: "text.viewfinder")
+                }
+                .buttonStyle(MonoGhostButtonStyle())
+
+                Button("Centro Notch") {
+                    withAnimation(Mono.betweenSpring) {
+                        appState.selectedSection = .notchHub
+                    }
+                }
+                .buttonStyle(MonoPrimaryButtonStyle())
+            }
+            .padding(13)
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .monoCard(radius: 15)
         }
     }
 
@@ -234,62 +516,6 @@ struct OverviewView: View {
         return parts.joined(separator: " · ")
     }
 
-    private func bentoCard(
-        icon: String,
-        icon3D: Icon3DName? = nil,
-        label: String,
-        primaryValue: String,
-        subtitle: String,
-        progress: Double,
-        ctaTitle: String,
-        ctaDisabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if let icon3D {
-                    Icon3D(name: icon3D, size: 30)
-                        .frame(width: 30, height: 22)
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Mono.ink(scheme).opacity(0.8))
-                        .frame(width: 30, height: 22)
-                }
-                Text(label)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Mono.ink(scheme))
-                    .lineLimit(1)
-                Spacer()
-            }
-
-            HStack(alignment: .center, spacing: 8) {
-                Text(primaryValue)
-                    .font(.system(size: 24, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Mono.ink(scheme))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .contentTransition(.numericText())
-                Spacer(minLength: 4)
-                Button(ctaTitle, action: action)
-                    .buttonStyle(MonoGhostButtonStyle())
-                    .disabled(ctaDisabled)
-            }
-
-            MonoProgressBar(value: progress, height: 4.5)
-
-            Spacer(minLength: 0)
-
-            Text(subtitle)
-                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
-                .foregroundStyle(Mono.muted(scheme))
-                .lineLimit(1)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .topLeading)
-        .monoCard(radius: 14)
-    }
-
     // MARK: - External Drives Strip
 
     private var externalVolumesStrip: some View {
@@ -303,7 +529,7 @@ struct OverviewView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "externaldrive.fill")
                             .font(.system(size: 14))
-                            .foregroundStyle(Mono.ink(scheme))
+                            .foregroundStyle(Mono.appsAccent)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(vol.name)
                                 .font(.system(size: 12, weight: .semibold))
@@ -332,13 +558,13 @@ struct OverviewView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity)
-                    .monoCard(radius: 12)
+                    .monoCard(radius: 14)
                 }
             }
         }
     }
 
-    // MARK: - Live Real-Time Sparkline Charts (Swift Charts)
+    // MARK: - Live Real-Time Sparkline Charts (Notch Accent Palette)
 
     private var liveChartStrip: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -348,9 +574,9 @@ struct OverviewView: View {
                     .foregroundStyle(Mono.muted(scheme))
                 Spacer()
                 HStack(spacing: 14) {
-                    legendDot("CPU", opacity: 0.95)
-                    legendDot("RAM", opacity: 0.55)
-                    legendDot("GPU", opacity: 0.30)
+                    legendDot("CPU", color: Mono.cpuAccent)
+                    legendDot("RAM", color: Mono.ramAccent)
+                    legendDot("GPU", color: Mono.gpuAccent)
                 }
             }
 
@@ -361,8 +587,8 @@ struct OverviewView: View {
                         y: .value("CPU", point.cpu),
                         series: .value("Metric", "CPU")
                     )
-                    .foregroundStyle(Mono.ink(scheme).opacity(0.95))
-                    .lineStyle(StrokeStyle(lineWidth: 1.8))
+                    .foregroundStyle(Mono.cpuAccent)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
 
                     LineMark(
@@ -370,8 +596,8 @@ struct OverviewView: View {
                         y: .value("RAM", point.memory),
                         series: .value("Metric", "RAM")
                     )
-                    .foregroundStyle(Mono.ink(scheme).opacity(0.55))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    .foregroundStyle(Mono.ramAccent)
+                    .lineStyle(StrokeStyle(lineWidth: 1.8))
                     .interpolationMethod(.catmullRom)
 
                     AreaMark(
@@ -379,7 +605,22 @@ struct OverviewView: View {
                         y: .value("GPU", point.gpu),
                         series: .value("Metric", "GPU")
                     )
-                    .foregroundStyle(Mono.ink(scheme).opacity(0.14))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Mono.gpuAccent.opacity(0.28), Mono.gpuAccent.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .interpolationMethod(.catmullRom)
+
+                    LineMark(
+                        x: .value("Time", point.timestamp),
+                        y: .value("GPU", point.gpu),
+                        series: .value("Metric", "GPU")
+                    )
+                    .foregroundStyle(Mono.gpuAccent)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
@@ -400,13 +641,13 @@ struct OverviewView: View {
             .frame(height: 128)
         }
         .padding(18)
-        .monoCard(radius: 14)
+        .monoCard(radius: 16)
     }
 
-    private func legendDot(_ title: String, opacity: Double) -> some View {
+    private func legendDot(_ title: String, color: Color) -> some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(Mono.ink(scheme).opacity(opacity))
+                .fill(color)
                 .frame(width: 7, height: 7)
             Text(title)
                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
@@ -439,7 +680,7 @@ struct OverviewView: View {
                         HStack {
                             Image(systemName: item.ecosystem.symbolName)
                                 .font(.system(size: 12))
-                                .foregroundStyle(Mono.muted(scheme))
+                                .foregroundStyle(Mono.cpuAccent)
                                 .frame(width: 20)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("\(item.projectName) · \(item.artifactKind)")
@@ -465,8 +706,8 @@ struct OverviewView: View {
                 }
             }
             .padding(18)
-            .frame(maxWidth: .infinity, minHeight: 232, alignment: .topLeading)
-            .monoCard(radius: 14)
+            .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+            .monoCard(radius: 16)
 
             // Unused Software Prompt
             VStack(alignment: .leading, spacing: 10) {
@@ -509,8 +750,8 @@ struct OverviewView: View {
                 }
             }
             .padding(18)
-            .frame(maxWidth: .infinity, minHeight: 232, alignment: .topLeading)
-            .monoCard(radius: 14)
+            .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+            .monoCard(radius: 16)
         }
     }
 }

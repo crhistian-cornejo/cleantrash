@@ -20,7 +20,7 @@ final class MenuBarController: NSObject {
         self.appState = appState
         self.onOpenDashboard = onOpenDashboard
         self.onToggleNotch = onToggleNotch
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
         configureButton()
@@ -38,18 +38,23 @@ final class MenuBarController: NSObject {
         if let symbol = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "CleanTrash") {
             symbol.isTemplate = true
             button.image = symbol
-            button.imagePosition = .imageOnly
+            button.imagePosition = .imageLeading
         }
         updateTitle()
     }
 
     private func updateTitle() {
         guard let button = statusItem.button else { return }
-        let ram = Int(appState.telemetry.memory.usedPercent)
-        let gpu = Int(appState.telemetry.gpu.deviceUtilizationPercent)
-        // Icon only: the live numbers already live in the notch, so they go in the tooltip here.
-        button.title = ""
-        button.toolTip = "CleanTrash · RAM \(ram)% · GPU \(gpu)%"
+        let cpu = Int(appState.telemetry.cpuTotalPercent.rounded())
+        let ram = Int(appState.telemetry.memory.usedPercent.rounded())
+        let gpu = Int(appState.telemetry.gpu.deviceUtilizationPercent.rounded())
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        let title = " \(cpu)% · \(ram)% · \(gpu)%"
+        button.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [.font: font]
+        )
+        button.toolTip = "CleanTrash · CPU \(cpu)% · RAM \(ram)% · GPU \(gpu)%"
     }
 
     private func rebuildMenu() {

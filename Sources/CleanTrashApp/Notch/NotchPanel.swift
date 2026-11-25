@@ -55,17 +55,36 @@ struct HardwareNotchGeometry: Equatable {
 @Observable
 final class NotchCoordinator {
     var isExpanded = false {
-        didSet { if !isExpanded { detail = nil } }
+        didSet {
+            if !isExpanded {
+                detail = nil
+                showLyricsTheater = false
+                isEditingWidgets = false
+            }
+        }
     }
-    /// Drill-down shown instead of the tabs (tap a tile on Estado).
+    var selectedTab: NotchTab = .home {
+        didSet {
+            if selectedTab != .home {
+                showLyricsTheater = false
+                isEditingWidgets = false
+            }
+        }
+    }
+    var productivitySubTab: ProductivitySubTab = .shelf
+    /// When true on Home, expands into the full-bleed synced karaoke lyrics theater.
+    var showLyricsTheater = false
+    /// Droppy Home widget customization drawer (add/remove/drag-reorder widgets).
+    var isEditingWidgets = false
+    /// Drill-down shown instead of the tabs (tap CPU/RAM/GPU/Disk).
     var detail: NotchDetail?
     var isHovering = false
     var geometry = HardwareNotchGeometry.detect()
 
     // Window stays at a fixed generous stage rect above the notch so SwiftUI spring animations
-    // never fight AppKit frame resizing (same architectural principle as monoBOT's notch/mod.rs!).
-    let stageWidth: CGFloat = 580
-    let stageHeight: CGFloat = 460
+    // never fight AppKit frame resizing (supports wide multi-widget Home bar & full drill-downs!).
+    let stageWidth: CGFloat = 900
+    let stageHeight: CGFloat = 620
 
     var closedWidth: CGFloat {
         geometry.hasHardwareNotch ? geometry.cameraWidth : 176
@@ -76,21 +95,53 @@ final class NotchCoordinator {
     }
 
     var isIsland = false
-    static let noticeWidth: CGFloat = 440
-    /// Open shelf width (content area is this minus 2 × `NotchRootView.sideInset`).
-    static let expandedWidth: CGFloat = 520
-    static let permissionWidth: CGFloat = 470
-    /// Each live ear beside the camera (metrics on the left, agents on the right).
+    static let noticeWidth: CGFloat = 450
+    static let defaultExpandedWidth: CGFloat = 564
+    static let permissionWidth: CGFloat = 480
+    /// Each live ear beside the camera (+5 pt breathing room on both outer edges).
     static let earWidth: CGFloat = 158
+    /// Detached Droppy floating capsule dock below the expanded notch (10 pt gap + 42 pt pill).
+    static let floatingDockReserve: CGFloat = 54
 
-    func activeHitRect(in stageSize: CGSize, hasNotice: Bool, hasPermission: Bool = false, showEars: Bool) -> CGRect {
+    func expandedWidth(for homeWidgets: [NotchWidgetID]) -> CGFloat {
+        if showLyricsTheater {
+            return min(780, max(640, geometry.screenFrame.width - 100))
+        }
+        if detail != nil || selectedTab != .home {
+            return Self.defaultExpandedWidth
+        }
+        let active = homeWidgets.isEmpty ? NotchWidgetID.defaultLayout : homeWidgets
+        let sum = active.reduce(CGFloat(0)) { $0 + $1.preferredWidth }
+        let dividers = CGFloat(max(0, active.count - 1)) * 22
+        let raw = sum + dividers + NotchRootView.sideInset * 2
+        let maxAllowed = min(840, max(560, geometry.screenFrame.width - 100))
+        return min(maxAllowed, max(540, raw))
+    }
+
+    var extraExpandedHeight: CGFloat {
+        if let detail { return detail.extraHeight }
+        if showLyricsTheater { return 112 }
+        if selectedTab == .home && isEditingWidgets { return 70 }
+        return 0
+    }
+
+    func activeHitRect(
+        in stageSize: CGSize,
+        hasNotice: Bool,
+        hasPermission: Bool = false,
+        showEars: Bool,
+        homeWidgets: [NotchWidgetID] = NotchWidgetID.defaultLayout
+    ) -> CGRect {
         let width: CGFloat
         let height: CGFloat
         if isExpanded {
-            width = Self.expandedWidth + 4
-            let header = geometry.hasHardwareNotch && !isIsland ? max(closedHeight, 28) : 40
-            height = NotchRootView.expandedHeight(headerHeight: header, isIsland: isIsland, showsStatus: detail == nil)
-                + (detail?.extraHeight ?? 0) + 6
+            width = expandedWidth(for: homeWidgets) + 8
+            let header = geometry.hasHardwareNotch && !isIsland ? max(closedHeight, 28) : 34
+            height = NotchRootView.expandedHeight(
+                headerHeight: header,
+                isIsland: isIsland,
+                bodyHeight: detail == nil ? selectedTab.bodyHeight : 230
+            ) + extraExpandedHeight + Self.floatingDockReserve + 8
         } else if hasPermission {
             width = Self.permissionWidth + 4
             height = closedHeight + 142
@@ -137,7 +188,7 @@ final class NotchWindowController {
         panel.isRestorable = false
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
-        // Above the menu bar and its menus (NSMainMenuWindowLevel + 3), identical to monoBOT.
+        // Above the menu bar and its menus (NSMainMenuWindowLevel + 3).
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
         panel.collectionBehavior = [
             .canJoinAllSpaces,
@@ -210,23 +261,30 @@ final class NotchWindowController {
             }
         }
 
-        // Global mouse movement + click tracking so hovering over the hardware notch
-        // wakes it even when another app (Terminal, Xcode, Zed, Cursor) is focused.
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { [weak self] event in
+        // Global mouse movement, drag, and click tracking so hovering or dragging files to the
+        // notch wakes it even when another app (Finder, Spotify, Terminal, T3 Code) is focused.
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             Task { @MainActor [weak self] in
-                self?.handlePointerEvent(isClick: event.type == .leftMouseDown)
+                self?.handlePointerEvent(type: event.type)
             }
         }
 
-        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { [weak self] event in
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask.union(.keyDown)) { [weak self] event in
+            if event.type == .keyDown && event.keyCode == 53 {
+                Task { @MainActor [weak self] in
+                    self?.closeExpanded()
+                }
+                return event
+            }
             Task { @MainActor [weak self] in
-                self?.handlePointerEvent(isClick: event.type == .leftMouseDown)
+                self?.handlePointerEvent(type: event.type)
             }
             return event
         }
     }
 
-    private func handlePointerEvent(isClick: Bool) {
+    private func handlePointerEvent(type: NSEvent.EventType) {
         guard appState.settings.notchEnabled else { return }
 
         let mouse = NSEvent.mouseLocation
@@ -238,11 +296,42 @@ final class NotchWindowController {
         let localY = frame.maxY - mouse.y
         let localPoint = CGPoint(x: localX, y: localY)
 
+        // Droppy-style drag-to-notch auto-open: dragging files toward the top center wakes the File Shelf.
+        if type == .leftMouseDragged && appState.settings.autoOpenShelfOnDrag {
+            let topDropZone = CGRect(x: 30, y: -12, width: stageSize.width - 60, height: max(96, coordinator.closedHeight + 70))
+            if topDropZone.contains(localPoint), Self.dragPasteboardHasFiles() {
+                openDelayTask?.cancel()
+                closeDelayTask?.cancel()
+                appState.productivity.isDragOverNotch = true
+                if !coordinator.isExpanded || coordinator.selectedTab != .shelf {
+                    withAnimation(Mono.openingSpring) {
+                        coordinator.selectedTab = .shelf
+                        coordinator.productivitySubTab = .shelf
+                        coordinator.detail = nil
+                        coordinator.isExpanded = true
+                    }
+                }
+                panel.ignoresMouseEvents = false
+                return
+            }
+        } else if type == .leftMouseUp {
+            if appState.productivity.isDragOverNotch {
+                appState.productivity.isDragOverNotch = false
+            }
+        }
+
+        let hasLiveEars = appState.settings.showLiveNotchEars && (
+            appState.activityLabel != nil
+                || !appState.agents.earStack.isEmpty
+                || (appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack)
+                || appState.productivity.isTimerRunning
+        )
         let hitRect = coordinator.activeHitRect(
             in: stageSize,
             hasNotice: appState.activeNotice != nil,
             hasPermission: !appState.agents.pending.isEmpty,
-            showEars: appState.settings.showLiveNotchEars
+            showEars: hasLiveEars,
+            homeWidgets: appState.settings.homeWidgets
         )
         let inside = hitRect.insetBy(dx: -8, dy: -6).contains(localPoint)
 
@@ -257,7 +346,7 @@ final class NotchWindowController {
         let hasActionableToast = !coordinator.isExpanded
             && (!appState.agents.pending.isEmpty || appState.activeNotice?.primaryActionTitle != nil)
 
-        if isClick {
+        if type == .leftMouseDown {
             if !inside && coordinator.isExpanded {
                 closeExpanded()
             } else if inside && !coordinator.isExpanded
@@ -271,6 +360,8 @@ final class NotchWindowController {
             return
         }
 
+        guard type == .mouseMoved else { return }
+
         coordinator.isHovering = inside
 
         guard appState.settings.notchTrigger == .hover else { return }
@@ -280,7 +371,7 @@ final class NotchWindowController {
             if !coordinator.isExpanded && !hasActionableToast {
                 openDelayTask?.cancel()
                 openDelayTask = Task { @MainActor [weak self] in
-                    // 90ms hover dwell (identical to monoBOT's OPEN_DELAY)
+                    // 90ms hover dwell
                     try? await Task.sleep(for: .milliseconds(90))
                     guard !Task.isCancelled, let self, self.coordinator.isHovering else { return }
                     withAnimation(Mono.openingSpring) {
@@ -294,7 +385,7 @@ final class NotchWindowController {
             if coordinator.isExpanded {
                 closeDelayTask?.cancel()
                 closeDelayTask = Task { @MainActor [weak self] in
-                    // 260ms exit grace (identical to monoBOT's CLOSE_DELAY)
+                    // 260ms exit grace
                     try? await Task.sleep(for: .milliseconds(260))
                     guard !Task.isCancelled, let self, !self.coordinator.isHovering else { return }
                     withAnimation(Mono.foldingSpring) {
@@ -304,6 +395,12 @@ final class NotchWindowController {
                 }
             }
         }
+    }
+
+    private static func dragPasteboardHasFiles() -> Bool {
+        let pb = NSPasteboard(name: .drag)
+        guard let types = pb.types else { return false }
+        return types.contains(.fileURL) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
     }
 
     isolated deinit {

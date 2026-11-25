@@ -6,14 +6,14 @@ struct PerformanceView: View {
     @Bindable var appState: AppState
     @Environment(\.colorScheme) private var scheme
 
-    private var ramSegments: [(label: String, bytes: UInt64)] {
+    private var ramSegments: [(label: String, bytes: UInt64, tint: Color)] {
         let m = appState.telemetry.memory
         return [
-            ("App Memory", m.appBytes),
-            ("Wired", m.wiredBytes),
-            ("Compressed", m.compressedBytes),
-            ("Cached Files", m.cachedFilesBytes),
-            ("Free", m.freeBytes)
+            ("Apps", m.appBytes, Mono.ramAccent),
+            ("Fija (Sistema)", m.wiredBytes, Mono.cpuAccent),
+            ("Comprimida", m.compressedBytes, Mono.junkAccent),
+            ("Caché", m.cachedFilesBytes, Mono.gpuAccent.opacity(0.75)),
+            ("Libre", m.freeBytes, Mono.ink(scheme).opacity(0.16))
         ]
     }
 
@@ -137,46 +137,50 @@ struct PerformanceView: View {
 
     private var ramPanel: some View {
         let mem = appState.telemetry.memory
+        let ramTint = mem.usedPercent >= 88 ? Mono.caution : Mono.ramAccent
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Memoria unificada")
-                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                 Spacer()
-                MonoTag(text: mem.pressure.label, inverted: mem.pressure != .normal)
+                MonoTag(text: mem.pressure.label, inverted: mem.pressure != .normal, tint: mem.pressure == .normal ? Mono.ramAccent : Mono.caution)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(Int(mem.usedPercent))%")
-                    .font(.system(size: 32, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Mono.ink(scheme))
-                    .contentTransition(.numericText())
-                Text("\(ByteFormat.memory(mem.usedBytes)) / \(ByteFormat.memory(mem.totalBytes))")
-                    .font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(Mono.muted(scheme))
+            HStack(alignment: .center, spacing: 14) {
+                MetricRing3D(icon: .memory, percent: mem.usedPercent, tint: ramTint, size: 54)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(Int(mem.usedPercent))%")
+                        .font(.system(size: 30, weight: .bold).monospacedDigit())
+                        .foregroundStyle(Mono.ink(scheme))
+                        .contentTransition(.numericText())
+                    Text("\(ByteFormat.memory(mem.usedBytes)) / \(ByteFormat.memory(mem.totalBytes))")
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(Mono.muted(scheme))
+                }
             }
 
             if appState.isOptimizingRAM {
-                MonoProgressBar(value: appState.ramOptimizationProgress, height: 6)
+                MonoProgressBar(value: appState.ramOptimizationProgress, height: 6, tint: Mono.ramAccent)
             }
 
             // Segmented horizontal bar via Swift Charts
-            Chart(Array(ramSegments.enumerated()), id: \.element.label) { idx, seg in
+            Chart(Array(ramSegments.enumerated()), id: \.element.label) { _, seg in
                 BarMark(
                     x: .value("Bytes", seg.bytes)
                 )
-                .foregroundStyle(Mono.shade(idx, scheme: scheme))
+                .foregroundStyle(seg.tint)
             }
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
-            .frame(height: 16)
+            .frame(height: 14)
             .clipShape(Capsule())
 
             VStack(spacing: 6) {
-                ForEach(Array(ramSegments.enumerated()), id: \.element.label) { idx, seg in
+                ForEach(Array(ramSegments.enumerated()), id: \.element.label) { _, seg in
                     HStack {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Mono.shade(idx, scheme: scheme))
+                        RoundedRectangle(cornerRadius: 2.5)
+                            .fill(seg.tint)
                             .frame(width: 9, height: 9)
                         Text(seg.label)
                             .font(.system(size: 11.5))
@@ -200,34 +204,38 @@ struct PerformanceView: View {
             }
         }
         .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 332, maxHeight: 332, alignment: .topLeading)
-        .monoCard(radius: 14)
+        .frame(maxWidth: .infinity, minHeight: 344, maxHeight: 344, alignment: .topLeading)
+        .monoCard(radius: 16, glass: true)
     }
 
     private var gpuPanel: some View {
         let gpu = appState.telemetry.gpu
+        let gpuTint = gpu.deviceUtilizationPercent >= 90 ? Mono.caution : Mono.gpuAccent
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("GPU · IOKit")
-                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .font(.system(size: 10.5, weight: .bold).monospacedDigit())
                     .foregroundStyle(Mono.muted(scheme))
                 Spacer()
-                MonoTag(text: gpu.modelName)
+                MonoTag(text: gpu.modelName, tint: Mono.gpuAccent)
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(Int(gpu.deviceUtilizationPercent))%")
-                    .font(.system(size: 32, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Mono.ink(scheme))
-                    .contentTransition(.numericText())
-                Text("Uso del dispositivo")
-                    .font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(Mono.muted(scheme))
+            HStack(alignment: .center, spacing: 14) {
+                MetricRing3D(icon: .gpu, percent: gpu.deviceUtilizationPercent, tint: gpuTint, size: 54)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(Int(gpu.deviceUtilizationPercent))%")
+                        .font(.system(size: 30, weight: .bold).monospacedDigit())
+                        .foregroundStyle(Mono.ink(scheme))
+                        .contentTransition(.numericText())
+                    Text("Uso del dispositivo")
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(Mono.muted(scheme))
+                }
             }
 
             VStack(spacing: 9) {
-                gpuBarRow("Renderer Engine", pct: gpu.rendererUtilizationPercent)
-                gpuBarRow("Tiler Engine", pct: gpu.tilerUtilizationPercent)
+                gpuBarRow("Renderer Engine", pct: gpu.rendererUtilizationPercent, tint: Mono.gpuAccent)
+                gpuBarRow("Tiler Engine", pct: gpu.tilerUtilizationPercent, tint: Mono.cpuAccent)
             }
 
             Divider().overlay(Mono.hairline(scheme))
@@ -259,13 +267,21 @@ struct PerformanceView: View {
                     x: .value("Time", point.timestamp),
                     y: .value("GPU", point.gpu)
                 )
-                .foregroundStyle(Mono.ink(scheme).opacity(0.18))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Mono.gpuAccent.opacity(0.32), Mono.gpuAccent.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.catmullRom)
                 LineMark(
                     x: .value("Time", point.timestamp),
                     y: .value("GPU", point.gpu)
                 )
-                .foregroundStyle(Mono.ink(scheme).opacity(0.9))
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
+                .foregroundStyle(Mono.gpuAccent)
+                .lineStyle(StrokeStyle(lineWidth: 1.8))
+                .interpolationMethod(.catmullRom)
             }
             .chartYScale(domain: 0...100)
             .chartXAxis(.hidden)
@@ -273,11 +289,11 @@ struct PerformanceView: View {
             .frame(height: 54)
         }
         .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 332, maxHeight: 332, alignment: .topLeading)
-        .monoCard(radius: 14)
+        .frame(maxWidth: .infinity, minHeight: 344, maxHeight: 344, alignment: .topLeading)
+        .monoCard(radius: 16, glass: true)
     }
 
-    private func gpuBarRow(_ label: String, pct: Double) -> some View {
+    private func gpuBarRow(_ label: String, pct: Double, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
@@ -288,7 +304,7 @@ struct PerformanceView: View {
                     .font(.system(size: 11, weight: .semibold).monospacedDigit())
                     .foregroundStyle(Mono.ink(scheme))
             }
-            MonoProgressBar(value: pct / 100.0, height: 4.5)
+            MonoProgressBar(value: pct / 100.0, height: 4.5, tint: tint)
         }
     }
 

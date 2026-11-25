@@ -2,15 +2,18 @@ import Charts
 import CleanTrashCore
 import SwiftUI
 
-/// Which vital the notch is drilled into (tapping a tile on the Estado tab).
+/// Which vital the notch is drilled into (tapping a tile on the Home / Estado tab).
 enum NotchDetail: String, Equatable {
     case cpu, memory, gpu, disk
 
-    /// Extra shelf height so each drill-down fits its content without dead space.
+    /// Generous shelf height so every drill-down (including simulator banner + process list)
+    /// renders completely without ever clipping the bottom rows.
     var extraHeight: CGFloat {
         switch self {
-        case .cpu, .memory: return 64
-        case .gpu, .disk: return 0
+        case .cpu: return 156
+        case .memory: return 164
+        case .gpu: return 74
+        case .disk: return 78
         }
     }
 }
@@ -29,6 +32,22 @@ struct NotchDetailView: View {
     private var t: SystemTelemetry { appState.telemetry }
 
     var body: some View {
+        Group {
+            if Mono.snapshotMode {
+                detailContent
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    detailContent
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .task(id: detail) {
+            if detail == .cpu { await appState.refreshSimulators() }
+        }
+    }
+
+    private var detailContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             switch detail {
             case .cpu: cpuDetail
@@ -36,11 +55,8 @@ struct NotchDetailView: View {
             case .gpu: gpuDetail
             case .disk: diskDetail
             }
-            Spacer(minLength: 0)
         }
-        .task(id: detail) {
-            if detail == .cpu { await appState.refreshSimulators() }
-        }
+        .padding(.bottom, 6)
     }
 
     // MARK: - Shared chrome
@@ -243,7 +259,7 @@ struct NotchDetailView: View {
                 }
             }
 
-            historyChart(\.cpu, tint: t.cpuTotalPercent >= 85 ? Mono.danger : .white)
+            historyChart(\.cpu, tint: t.cpuTotalPercent >= 85 ? Mono.danger : Mono.cpuAccent)
 
             HStack(spacing: 6) {
                 stat("Usuario", "\(Int(t.cpuUserPercent))%")
@@ -320,7 +336,7 @@ struct NotchDetailView: View {
                 }
             }
 
-            historyChart(\.memory)
+            historyChart(\.memory, tint: m.usedPercent >= 88 ? Mono.caution : Mono.ramAccent)
 
             // Composition bar
             VStack(alignment: .leading, spacing: 6) {
@@ -380,7 +396,7 @@ struct NotchDetailView: View {
                 }
             }
 
-            historyChart(\.gpu)
+            historyChart(\.gpu, tint: Mono.gpuAccent)
 
             HStack(spacing: 6) {
                 stat("Render", "\(Int(g.rendererUtilizationPercent))%")
@@ -422,9 +438,11 @@ struct NotchDetailView: View {
     private var diskDetail: some View {
         let d = t.disk
         let total = Double(max(1, d.totalBytes))
+        let apps = appState.installedApps.reduce(0 as UInt64) { $0 + $1.totalSizeBytes }
         let junk = appState.totalSmartReclaimableBytes + appState.trashContents.totalBytes
         let used = d.totalBytes > d.availableBytes ? d.totalBytes - d.availableBytes : 0
-        let other = used > junk ? used - junk : 0
+        let known = apps + junk
+        let other = used > known ? used - known : 0
 
         return VStack(alignment: .leading, spacing: 9) {
             header(icon: .disk, title: d.volumeName, value: ByteFormat.compact(d.availableBytes)) {
@@ -437,20 +455,22 @@ struct NotchDetailView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                GeometryReader { geo in
-                    HStack(spacing: 2) {
-                        RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.85))
-                            .frame(width: max(2, geo.size.width * Double(other) / total))
-                        RoundedRectangle(cornerRadius: 3).fill(Mono.caution)
-                            .frame(width: max(2, geo.size.width * Double(junk) / total))
-                        RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.1))
-                    }
-                }
-                .frame(height: 10)
+                DotMatrixStorageBar(
+                    appsFraction: Double(apps) / total,
+                    cleanableFraction: Double(junk) / total,
+                    systemFraction: Double(other) / total
+                )
+                .frame(height: 36)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.045)))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.75))
+
                 HStack(spacing: 12) {
-                    legend(.white.opacity(0.85), "Usado \(ByteFormat.compact(other))")
-                    legend(Mono.caution, "Recuperable \(ByteFormat.compact(junk))")
-                    legend(.white.opacity(0.2), "Libre \(ByteFormat.compact(d.availableBytes))")
+                    legend(Mono.appsAccent, "Apps \(ByteFormat.compact(apps))")
+                    legend(Mono.junkAccent, "Recuperable \(ByteFormat.compact(junk))")
+                    legend(.white.opacity(0.65), "Sistema \(ByteFormat.compact(other))")
+                    legend(.white.opacity(0.22), "Libre \(ByteFormat.compact(d.availableBytes))")
                 }
             }
             .padding(.top, 2)

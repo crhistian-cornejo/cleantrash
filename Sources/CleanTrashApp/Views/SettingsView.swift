@@ -106,6 +106,104 @@ struct SettingsView: View {
 
                         divider
                         HStack {
+                            rowLabel(title: "Superficie (Notch y ventana)", subtitle: "Negro fusionado con la cámara, Dynamic Glass o Liquid Glass en toda la app.")
+                            Spacer()
+                            Picker("", selection: $appState.settings.notchSurface) {
+                                Text("Negro").tag(NotchSurfaceMode.obsidian)
+                                Text("Dynamic Glass").tag(NotchSurfaceMode.glass)
+                                Text("Liquid Glass").tag(NotchSurfaceMode.clearGlass)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 280)
+                        }
+                        .padding(.vertical, 10)
+
+                        divider
+                        toggleRow(
+                            title: "Mostrar Spotify / Música junto a la cámara",
+                            subtitle: "Muestra portada, visualizador y canción en vivo en la oreja derecha cuando no hay agentes trabajando.",
+                            isOn: $appState.settings.showMusicInNotchEars
+                        )
+                        divider
+                        toggleRow(
+                            title: "Letras sincronizadas en la oreja del Notch",
+                            subtitle: "Muestra la línea actual de la canción en vivo al lado de la cámara.",
+                            isOn: $appState.settings.showLyricsInNotchEar
+                        )
+                        divider
+                        toggleRow(
+                            title: "Abrir Bandeja al arrastrar archivos al Notch",
+                            subtitle: "Al llevar un archivo hacia arriba, el Notch se abre para guardarlo, comprimirlo o compartirlo.",
+                            isOn: $appState.settings.autoOpenShelfOnDrag
+                        )
+                        divider
+                        toggleRow(
+                            title: "Mascota flotante de Agentes IA (CleanBot)",
+                            subtitle: "Muestra un compañero animado en pantalla que reacciona a Claude/Codex/Antigravity y permite aprobar permisos en 1 clic.",
+                            isOn: $appState.settings.agentMascotEnabled
+                        )
+                        divider
+                        toggleRow(
+                            title: "Breather — pausas 20-20-20 (ojos, estiramiento, agua)",
+                            subtitle: "Recordatorios suaves en el Notch cada 20 min; se silencia automáticamente cuando estás en llamada.",
+                            isOn: $appState.settings.breatherEnabled
+                        )
+                        divider
+                        toggleRow(
+                            title: "Historial del portapapeles en la Bandeja",
+                            subtitle: "Guarda texto, enlaces, colores HEX e imágenes copiadas (ignora contraseñas).",
+                            isOn: $appState.settings.clipboardHistoryEnabled
+                        )
+
+                        divider
+                        VStack(alignment: .leading, spacing: 8) {
+                            rowLabel(
+                                title: "Widgets del Home en el Notch",
+                                subtitle: "Elige hasta 4 widgets activos (también puedes arrastrarlos desde el botón ⊞ del Notch)."
+                            )
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 6)], spacing: 6) {
+                                ForEach(NotchWidgetID.allCases) { widget in
+                                    let active = appState.settings.homeWidgets.contains(widget)
+                                    Button {
+                                        var current = appState.settings.homeWidgets
+                                        if let idx = current.firstIndex(of: widget) {
+                                            if current.count > 1 { current.remove(at: idx) }
+                                        } else {
+                                            if current.count >= 4 { current.removeFirst() }
+                                            current.append(widget)
+                                        }
+                                        appState.settings.homeWidgets = current
+                                        AppKitHaptics.tap()
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: widget.symbol)
+                                                .font(.system(size: 11, weight: .semibold))
+                                            Text(widget.title)
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .lineLimit(1)
+                                            Spacer(minLength: 0)
+                                            if active {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 11))
+                                            }
+                                        }
+                                        .foregroundStyle(active ? Mono.primaryInk(scheme) : Mono.ink(scheme))
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .fill(active ? Mono.primaryFill(scheme) : Mono.ink(scheme).opacity(0.06))
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .pointingHandCursor()
+                                }
+                            }
+                        }
+                        .padding(.vertical, 10)
+
+                        divider
+                        HStack {
                             rowLabel(title: "Cómo abrir el Notch", subtitle: "Al pasar el cursor o solo al hacer clic.")
                             Spacer()
                             Picker("", selection: $appState.settings.notchTrigger) {
@@ -277,29 +375,48 @@ struct SettingsView: View {
                     .padding(.vertical, 6)
                 }
 
-                // 5. Permiso Acceso total al disco
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(appState.hasFullDiskAccess ? Mono.healthy : Mono.caution)
-                        .frame(width: 9, height: 9)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Acceso total al disco")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Mono.ink(scheme))
-                        Text(appState.hasFullDiskAccess
-                             ? "Activado — CleanTrash puede limpiar cachés protegidas y la Papelera sin límites."
-                             : "Pendiente — agrégalo en Ajustes del Sistema para escanear también la Papelera y contenedores.")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Mono.muted(scheme))
+                // 5. Permisos del sistema (Acceso total al disco + Grabación de pantalla para OCR)
+                settingsCard(title: "Permisos de privacidad", icon: "lock.shield") {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(appState.hasFullDiskAccess ? Mono.healthy : Mono.caution)
+                                .frame(width: 9, height: 9)
+                            rowLabel(
+                                title: "Acceso total al disco",
+                                subtitle: appState.hasFullDiskAccess
+                                    ? "Activado — CleanTrash puede limpiar cachés protegidas y la Papelera sin límites."
+                                    : "Pendiente — agrégalo en Ajustes del Sistema para escanear también la Papelera y contenedores."
+                            )
+                            Spacer()
+                            Button("Ajustes del Sistema") {
+                                appState.openFullDiskAccessSettings()
+                            }
+                            .buttonStyle(MonoGhostButtonStyle())
+                        }
+                        .padding(.vertical, 10)
+
+                        divider
+
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(VisionTextCapture.hasScreenRecordingPermission ? Mono.healthy : Mono.caution)
+                                .frame(width: 9, height: 9)
+                            rowLabel(
+                                title: "Captura de pantalla (OCR interactivo)",
+                                subtitle: VisionTextCapture.hasScreenRecordingPermission
+                                    ? "Activado — OCR captura texto del área que elijas usando Apple Vision 100% local (sin audio)."
+                                    : "Opcional — macOS muestra el aviso estándar de pantalla/audio, pero CleanTrash solo lee el área elegida localmente. También puedes usar OCR Clip con ⌘⇧⌃4 sin este permiso."
+                            )
+                            Spacer()
+                            Button("Abrir permiso") {
+                                VisionTextCapture.openScreenRecordingSettings()
+                            }
+                            .buttonStyle(MonoGhostButtonStyle())
+                        }
+                        .padding(.vertical, 10)
                     }
-                    Spacer()
-                    Button("Ajustes del Sistema") {
-                        appState.openFullDiskAccessSettings()
-                    }
-                    .buttonStyle(MonoGhostButtonStyle())
                 }
-                .padding(16)
-                .monoCard(radius: 14)
             }
             .padding(20)
         }

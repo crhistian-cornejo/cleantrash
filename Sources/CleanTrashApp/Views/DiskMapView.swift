@@ -80,11 +80,14 @@ struct DiskMapView: View {
                     navigationStack = []
                     Task { await appState.mapDisk(at: appState.diskScanTargetPath) }
                 } label: {
-                    Label(appState.isMappingDisk ? "Mapping…" : "Rescan", systemImage: "arrow.clockwise")
+                    Label(appState.isMappingDisk ? "Mapeando…" : "Reescanear", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(MonoPrimaryButtonStyle())
                 .disabled(appState.isMappingDisk)
             }
+
+            // Droppy Dot-Matrix Volume Summary Strip (matches the Notch Cleaner card!)
+            diskMatrixStrip
 
             // Breadcrumb bar + Cleanable filter
             HStack(spacing: 6) {
@@ -93,7 +96,7 @@ struct DiskMapView: View {
                         navigationStack = []
                     }
                 } label: {
-                    Text(appState.diskRoot?.name ?? "Root")
+                    Text(appState.diskRoot?.name ?? "Inicio")
                         .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
                         .foregroundStyle(navigationStack.isEmpty ? Mono.ink(scheme) : Mono.muted(scheme))
                 }
@@ -203,16 +206,16 @@ struct DiskMapView: View {
                                 innerRadius: .ratio(0.62),
                                 angularInset: 1.5
                             )
-                            .foregroundStyle(Mono.shade(idx, scheme: scheme))
-                            .cornerRadius(3)
+                            .foregroundStyle(Mono.categoryAccent(idx, scheme: scheme))
+                            .cornerRadius(4)
                         }
                         .frame(height: 126)
 
                         VStack(alignment: .leading, spacing: 4) {
                             ForEach(Array(categoryBreakdown.prefix(5).enumerated()), id: \.element.category.id) { idx, item in
                                 HStack(spacing: 6) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Mono.shade(idx, scheme: scheme))
+                                    RoundedRectangle(cornerRadius: 2.5)
+                                        .fill(Mono.categoryAccent(idx, scheme: scheme))
                                         .frame(width: 8, height: 8)
                                     Text(item.category.rawValue)
                                         .font(.system(size: 10.5))
@@ -341,6 +344,55 @@ struct DiskMapView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .monoCard(radius: 10)
+    }
+
+    private var diskMatrixStrip: some View {
+        let disk = appState.telemetry.disk
+        let total = max(1, disk.totalBytes)
+        let apps = appState.installedApps.reduce(0 as UInt64) { $0 + $1.totalSizeBytes }
+        let cleanable = appState.totalSmartReclaimableBytes + appState.trashContents.totalBytes
+        let known = apps + cleanable
+        let sys = disk.usedBytes > known ? disk.usedBytes - known : 0
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Text(ByteFormat.compact(disk.usedBytes))
+                        .font(.system(size: 14, weight: .bold).monospacedDigit())
+                        .foregroundStyle(Mono.ink(scheme))
+                    Text("de \(ByteFormat.compact(disk.totalBytes)) · \(ByteFormat.compact(disk.availableBytes)) disponibles")
+                        .font(.system(size: 11.5).monospacedDigit())
+                        .foregroundStyle(Mono.muted(scheme))
+                }
+                Spacer()
+                HStack(spacing: 12) {
+                    matrixPill("Apps", value: ByteFormat.compact(apps), color: Mono.appsAccent)
+                    matrixPill("Basura", value: ByteFormat.compact(cleanable), color: Mono.junkAccent)
+                    matrixPill("Sistema", value: ByteFormat.compact(sys), color: Mono.ink(scheme).opacity(0.62))
+                }
+            }
+
+            DotMatrixStorageBar(
+                appsFraction: Double(apps) / Double(total),
+                cleanableFraction: Double(cleanable) / Double(total),
+                systemFraction: Double(sys) / Double(total),
+                forceDark: false
+            )
+            .frame(height: 32)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .monoCard(radius: 14, glass: true)
+    }
+
+    private func matrixPill(_ label: String, value: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 6.5, height: 6.5)
+            Text("\(label) \(value)")
+                .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                .foregroundStyle(Mono.muted(scheme))
+                .lineLimit(1)
+        }
     }
 
     private func chooseFolder() {
