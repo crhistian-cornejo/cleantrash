@@ -1,26 +1,57 @@
-<img src="assets/icon.svg" width="64" height="64" alt="CleanTrash">
+<p align="center">
+  <img src="assets/icon.svg" width="76" height="76" alt="CleanTrash" />
+</p>
 
-# CleanTrash
+<h1 align="center">CleanTrash</h1>
 
-Native **Swift 6 + SwiftUI + AppKit (macOS 27)** Mac cleaner, developer build-artifact radar, APFS disk space mapper, unused-app auditor, and live hardware Dynamic Notch HUD — engineered exclusively for Apple Silicon Macs in a monochrome black-and-white design language inspired by **monoBOT**.
+<p align="center">
+  Native macOS cleaner, Dynamic Notch productivity hub, AI coding-agent monitor, and local Touch ID Password Vault for Apple Silicon.
+</p>
 
-## Features
+<p align="center">
+  <sub>Swift 6 · SwiftUI · AppKit · macOS 15+ / Liquid Glass · 100% Local</sub>
+</p>
 
-- **Dynamic Monochrome Notch & Menu Bar HUD**: Sits over the MacBook hardware camera housing (or floats as a pill), showing live RAM/GPU ears, spring-animated hover/click expansion, and instant live notices when Cargo `target/`, `node_modules/`, or memory pressure spikes.
-- **Dev Radar (Auto-Detecting via FSEvents)**: Automatically watches developer workspaces (`~/Developer`, `~/.t3/projects`, etc.) for Rust `target/`, Node/Bun `node_modules/`, `.next`, `.turbo`, `dist`, Swift `.build/`, Xcode `DerivedData`, Python `.venv`, Gradle/Go caches, and AI model/agent caches — with an **Active-Build Guard** so live compilations are never deleted.
-- **Live Telemetry & Performance**: Real-time CPU, Unified Memory breakdown (`host_statistics64` + kernel pressure + swap), **Apple Silicon GPU** (`IOAccelerator` `Device %`, `Renderer %`, `Tiler %`, active/allocated GPU memory), Disk, Battery, Network throughput, safe RAM optimization, GPU Metal/WebGPU cache trimming, APFS local snapshot thinning (`tmutil`), and DNS cache flush.
-- **APFS Disk Space Map**: Parallel disk mapper using real allocated APFS blocks (`totalFileAllocatedSizeKey`), skipping evicted iCloud placeholders, respecting volume boundaries, and rendering an interactive monochrome Treemap + Swift Charts category donut with cleanable hints.
-- **System Junk Cleaner**: User/Darwin/Container/Electron caches, logs, Xcode/Simulator caches, broken `.plist` preferences, dangling `LaunchAgents`, Trash, and old `.dmg/.pkg` installers.
-- **Unused Apps & Deep Uninstaller**: Uses Spotlight `kMDItemLastUsedDate` to surface untouched apps with a `"Still using this?"` triage queue (Keep / Ask in 30d / Deep Uninstall) and maps all 10 associated `~/Library` locations plus orphaned leftovers.
+---
 
-- **Background Automation & Launch at Login**: `SMAppService` launch at login, automatic critical-RAM optimization, optional auto-cleanup of stale dev targets when free space drops below your minimum, external drive monitoring & safe eject, and automatic Notch prompts for untouched apps.
+## Dynamic Notch
 
-## Build, Install & Run
+Lives over the MacBook hardware notch — or floats as a Dynamic Island — in **Negro**, **Dynamic Glass**, or **Liquid Glass**, with a subtle floating capsule dock.
+
+- **Now Playing & Karaoke**: Spotify & Apple Music controls, marquee title/artist & waveform ears, clickable track/artist links, side-by-side synced lyrics theater, and a draggable adaptive floating mini-player tinted from album artwork.
+- **Drop Shelf & Vision OCR**: Drag files in/out of the Notch to zip, AirDrop, convert `PNG ↔ JPG`, or extract text locally with Apple Vision OCR.
+- **Clipboard & Focus**: Rich clipboard history (text, hex colors, images, pins) and built-in Pomodoro timer.
+- **Quick Vault AutoFill (`⌥⇧P`)**: Touch ID–protected search inside the Notch that detects the active site in Chrome, Safari, Arc, Brave, or Edge and auto-fills credentials with one click.
+- **AI Coding Agents**: Live status verbs (`Pensando…`, `Editando…`, `Ejecutando…`) in the closed ear, inline Allow / Deny permission cards for Claude Code, Codex, and Antigravity, plus an optional desktop mascot (`⌥⇧M`).
+- **Modular Home Widgets**: Drag-and-reorder up to 4 live widgets — Music, System Vitals, Agents, Breather (20-20-20 eye rest/stretch/water), On-Mac Quick Translate (`⌥⇧T`), Weather, Bluetooth Batteries, Calendar, Devly tools, Quick Notes, Audio, and Stay Awake.
+
+## Main App
+
+A unified Dynamic Glass desktop workspace with layered frosted-glass icons and live Menu Bar telemetry (`CPU · RAM · GPU`).
+
+- **Smart Overview**: One-click health check, live APFS storage bar, and instant cleanup summary.
+- **Notch Studio**: Manage active Notch widgets, surface style, floating mini-player, translator, mascot, clipboard, and shelf from one screen.
+- **Encrypted Password Vault (`CTV2`)**: Local `AES-GCM-256` + `HKDF-SHA256` + AAD vault locked by Touch ID, auto-locking on sleep/idle with zero-trace clipboard. Import NordPass/Chrome CSVs, deduplicate & audit weak/reused passwords, export encrypted `.ctvault` backups, or export to Apple Passwords for iPhone Face ID sync.
+- **Dev Radar**: Watches workspaces via FSEvents for `target/`, `node_modules/`, `.build/`, `DerivedData`, `.venv`, and caches — with an active-build guard so running compiles are never touched.
+- **APFS Disk Map**: Parallel real-block disk mapper with interactive treemap and cleanable hints.
+- **System Junk & Apps Audit**: Safe cache/log/simulator/installer cleanup plus unused-app triage with deep uninstall across `~/Library`.
+- **Performance**: Live CPU, Unified Memory, and Apple Silicon GPU metrics with safe RAM optimization, Metal cache trimming, APFS snapshot thinning, and DNS flush.
+
+## Shortcuts
+
+| Shortcut | Action |
+| :--- | :--- |
+| `⌥⇧P` | Open Password Vault AutoFill in Notch |
+| `⌥⇧T` | On-Mac Quick Translate panel |
+| `⌥⇧M` | Toggle AI Agent desktop mascot |
+| `⌘N` | Toggle Dynamic Notch |
+
+## Build & Run
 
 ```bash
 # Run unit tests
 swift test
 
-# Build, install to /Applications/CleanTrash.app, and launch
+# Build, sign, install to /Applications/CleanTrash.app, and launch
 ./scripts/build-app.sh release --install --run
 ```
