@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
+        if let dir = ProcessInfo.processInfo.environment["CLEANTRASH_RENDER_SHOWCASE"] {
+            NotchSnapshotRenderer.renderShowcase(appState: appState, to: dir)
+            return
+        }
         if let dir = ProcessInfo.processInfo.environment["CLEANTRASH_RENDER_NOTCH"] {
             NotchSnapshotRenderer.render(appState: appState, to: dir)
             return

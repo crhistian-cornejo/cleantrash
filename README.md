@@ -12,6 +12,10 @@
   <sub>Swift 6 · SwiftUI · AppKit · macOS 15+ / Liquid Glass · 100% Local</sub>
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/notch-home.png" width="820" alt="CleanTrash Dynamic Notch" />
+</p>
+
 ---
 
 ## Dynamic Notch
@@ -25,9 +29,20 @@ Lives over the MacBook hardware notch — or floats as a Dynamic Island — in *
 - **AI Coding Agents**: Live status verbs (`Pensando…`, `Editando…`, `Ejecutando…`) in the closed ear, inline Allow / Deny permission cards for Claude Code, Codex, and Antigravity, plus an optional desktop mascot (`⌥⇧M`).
 - **Modular Home Widgets**: Drag-and-reorder up to 4 live widgets — Music, System Vitals, Agents, Breather (20-20-20 eye rest/stretch/water), On-Mac Quick Translate (`⌥⇧T`), Weather, Bluetooth Batteries, Calendar, Devly tools, Quick Notes, Audio, and Stay Awake.
 
+<p align="center">
+  <img src="assets/screenshots/notch-karaoke.png" width="49%" alt="Karaoke Lyrics Theater" />
+  <img src="assets/screenshots/notch-shelf.png" width="49%" alt="Droppy File Shelf & OCR" />
+</p>
+
+---
+
 ## Main App
 
 A unified Dynamic Glass desktop workspace with layered frosted-glass icons and live Menu Bar telemetry (`CPU · RAM · GPU`).
+
+<p align="center">
+  <img src="assets/screenshots/dashboard-overview.png" width="820" alt="CleanTrash Main Dashboard" />
+</p>
 
 - **Smart Overview**: One-click health check, live APFS storage bar, and instant cleanup summary.
 - **Notch Studio**: Manage active Notch widgets, surface style, floating mini-player, translator, mascot, clipboard, and shelf from one screen.
@@ -36,6 +51,13 @@ A unified Dynamic Glass desktop workspace with layered frosted-glass icons and l
 - **APFS Disk Map**: Parallel real-block disk mapper with interactive treemap and cleanable hints.
 - **System Junk & Apps Audit**: Safe cache/log/simulator/installer cleanup plus unused-app triage with deep uninstall across `~/Library`.
 - **Performance**: Live CPU, Unified Memory, and Apple Silicon GPU metrics with safe RAM optimization, Metal cache trimming, APFS snapshot thinning, and DNS flush.
+
+<p align="center">
+  <img src="assets/screenshots/dashboard-studio.png" width="49%" alt="Notch Studio" />
+  <img src="assets/screenshots/dashboard-vault.png" width="49%" alt="Touch ID Password Vault" />
+</p>
+
+---
 
 ## Shortcuts
 
