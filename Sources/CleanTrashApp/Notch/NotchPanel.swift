@@ -170,6 +170,9 @@ final class NotchWindowController {
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var screenObserver: NSObjectProtocol?
+    private var lockObserver: NSObjectProtocol?
+    private var unlockObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
     private var openDelayTask: Task<Void, Never>?
     private var closeDelayTask: Task<Void, Never>?
 
@@ -258,6 +261,37 @@ final class NotchWindowController {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.repositionPanel()
+            }
+        }
+
+        // Clean lock/unlock & wake recovery so Notch widgets never lose z-order or freeze after Lock Screen.
+        lockObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.closeExpanded()
+            }
+        }
+
+        unlockObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.restoreAfterWakeOrUnlock()
+            }
+        }
+
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.restoreAfterWakeOrUnlock()
             }
         }
 
@@ -403,9 +437,21 @@ final class NotchWindowController {
         return types.contains(.fileURL) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
     }
 
+    private func restoreAfterWakeOrUnlock() {
+        guard appState.settings.notchEnabled else { return }
+        repositionPanel()
+        panel.orderFrontRegardless()
+        appState.productivity.refreshAudioState()
+        appState.productivity.refreshCalendar()
+        Task { await appState.productivity.refreshWeather() }
+    }
+
     isolated deinit {
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
         if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
         if let o = screenObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = lockObserver { DistributedNotificationCenter.default().removeObserver(o) }
+        if let o = unlockObserver { DistributedNotificationCenter.default().removeObserver(o) }
+        if let o = wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
     }
 }

@@ -64,6 +64,7 @@ A unified Dynamic Glass desktop workspace with layered frosted-glass icons and l
 | Shortcut | Action |
 | :--- | :--- |
 | `⌥⇧P` | Open Password Vault AutoFill in Notch |
+| `⌥⇧L` | Full-Screen StandBy & Spotify Karaoke |
 | `⌥⇧T` | On-Mac Quick Translate panel |
 | `⌥⇧M` | Toggle AI Agent desktop mascot |
 | `⌘N` | Toggle Dynamic Notch |

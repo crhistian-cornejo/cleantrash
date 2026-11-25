@@ -946,6 +946,21 @@ struct NotchRootView: View {
 
                 Button {
                     coordinator.isExpanded = false
+                    appState.productivity.standBy.toggle(appState: appState)
+                    AppKitHaptics.tap()
+                } label: {
+                    Image(systemName: "sparkles.tv")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
+                .help("Modo StandBy / Spotify Pantalla Completa (⌥⇧L)")
+
+                Button {
+                    coordinator.isExpanded = false
                     appState.onOpenMainWindow?()
                 } label: {
                     Image(systemName: "arrow.up.forward")

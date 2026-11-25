@@ -107,6 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         vaultQuickFill.target = self
         actionsMenu.addItem(vaultQuickFill)
 
+        let standByMode = NSMenuItem(title: "Modo StandBy / Spotify Pantalla Completa", action: #selector(toggleStandByShortcut), keyEquivalent: "l")
+        standByMode.keyEquivalentModifierMask = [.option, .shift]
+        standByMode.target = self
+        actionsMenu.addItem(standByMode)
+
         actionsMenu.addItem(.separator())
 
         let smartScan = NSMenuItem(title: "Analizar Mac", action: #selector(smartScanShortcut), keyEquivalent: "k")
@@ -147,6 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleMascotShortcut() {
         appState.settings.agentMascotEnabled.toggle()
+        AppKitHaptics.tap()
+    }
+
+    @objc private func toggleStandByShortcut() {
+        appState.productivity.standBy.toggle(appState: appState)
         AppKitHaptics.tap()
     }
 

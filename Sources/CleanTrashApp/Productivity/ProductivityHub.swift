@@ -133,9 +133,10 @@ final class ProductivityHub {
     private(set) var isMasterMuted: Bool = false
     private(set) var audioOutputName: String = "Altavoces"
 
-    // Detachable Floating Mini-Player, On-Device Quick Translate & Breather Wellness Engine
+    // Detachable Floating Mini-Player, On-Device Quick Translate, Full-Screen StandBy & Breather Wellness Engine
     @ObservationIgnored let floatingPlayer = FloatingPlayerWindowController()
     @ObservationIgnored let quickTranslate = QuickTranslateWindowController()
+    @ObservationIgnored let standBy = AmbientStandByController()
     let breather = BreatherEngine()
 
     // Low-battery accessory alert callback (fires once per accessory <= 20%)

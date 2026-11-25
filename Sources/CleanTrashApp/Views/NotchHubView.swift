@@ -104,6 +104,16 @@ struct NotchHubView: View {
             .buttonStyle(MonoGhostButtonStyle())
             .help("Mostrar u ocultar el mini-reproductor flotante (3 tamaños)")
 
+            // Full-Screen StandBy / Spotify Ambient Mode
+            Button {
+                hub.standBy.toggle(appState: appState)
+                AppKitHaptics.tap()
+            } label: {
+                Label("StandBy", systemImage: "sparkles.tv")
+            }
+            .buttonStyle(MonoGhostButtonStyle())
+            .help("Pantalla completa Spotify Karaoke y Widgets arrastrables (⌥⇧L)")
+
             Button {
                 onToggleNotch()
                 AppKitHaptics.tap()
