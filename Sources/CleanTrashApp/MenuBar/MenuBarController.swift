@@ -123,6 +123,12 @@ final class MenuBarController: NSObject {
             item.target = self
             menu.addItem(item)
         }
+        if appState.updater.isAvailable {
+            let update = NSMenuItem(title: "Buscar actualizaciones…", action: #selector(checkUpdatesAction), keyEquivalent: "")
+            update.target = self
+            update.isEnabled = appState.updater.canCheckForUpdates
+            menu.addItem(update)
+        }
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Salir de CleanTrash", action: #selector(quitAction), keyEquivalent: "q")
         quit.target = self
@@ -137,6 +143,7 @@ final class MenuBarController: NSObject {
     @objc private func toggleNotchAction() { onToggleNotch() }
     @objc private func optimizeRAMAction() { Task { await appState.optimizeRAM() } }
     @objc private func smartScanAction() { Task { await appState.runSmartScan() } }
+    @objc private func checkUpdatesAction() { appState.updater.checkForUpdates() }
     @objc private func quitAction() { NSApp.terminate(nil) }
 }
 

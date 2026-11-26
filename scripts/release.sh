@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Builds a universal, Developer ID–signed, notarized and stapled CleanTrash DMG.
 #   scripts/release.sh [version] [build]
+#   PUBLISH=1 NOTES_FILE=notes.md scripts/release.sh 1.1.0   → also tags, pushes and creates the GitHub release
+# Also writes dist/appcast.xml (Sparkle feed, EdDSA-signed with the "cleantrash" key in the login keychain).
+# The app reads it from …/releases/latest/download/appcast.xml, so it must be an asset of the newest release.
 # Notarization uses an App Store Connect API key: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH
 # (read from the environment, or from $ASC_ENV_FILE / ~/.config/babylua/asc.env).
 set -euo pipefail
@@ -41,6 +44,21 @@ cat > "$ENTITLEMENTS" <<'EOF'
 EOF
 
 echo "→ Firmando (hardened runtime + timestamp)…"
+# Sparkle: sign innermost code first (XPC services, Autoupdate, Updater.app), then the framework.
+FW="$APP/Contents/Frameworks/Sparkle.framework"
+if [[ -d "$FW" ]]; then
+  SIGN=(codesign --force --options runtime --timestamp --sign "$IDENTITY")
+  for xpc in "$FW"/Versions/B/XPCServices/*.xpc; do
+    if [[ "$xpc" == *Downloader.xpc ]]; then
+      "${SIGN[@]}" --preserve-metadata=entitlements "$xpc"
+    else
+      "${SIGN[@]}" "$xpc"
+    fi
+  done
+  "${SIGN[@]}" "$FW/Versions/B/Autoupdate"
+  "${SIGN[@]}" "$FW/Versions/B/Updater.app"
+  "${SIGN[@]}" "$FW"
+fi
 if [[ -f "$APP/Contents/MacOS/cleantrash-hook" ]]; then
   codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP/Contents/MacOS/cleantrash-hook"
 fi
@@ -75,5 +93,41 @@ xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
 
+echo "→ Generando appcast…"
+REPO_URL="https://github.com/crhistian-cornejo/cleantrash"
+TAG="v$APP_VERSION"
+SIGN_UPDATE="$ROOT/.build/artifacts/sparkle/Sparkle/bin/sign_update"
+ED_ATTRS="$("$SIGN_UPDATE" --account cleantrash "$DMG")"
+PUB_DATE="$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")"
+cat > "$DIST/appcast.xml" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>CleanTrash</title>
+    <link>$REPO_URL</link>
+    <item>
+      <title>CleanTrash $APP_VERSION</title>
+      <pubDate>$PUB_DATE</pubDate>
+      <sparkle:version>$BUILD_NUMBER</sparkle:version>
+      <sparkle:shortVersionString>$APP_VERSION</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>$REPO_URL/releases/tag/$TAG</sparkle:fullReleaseNotesLink>
+      <enclosure url="$REPO_URL/releases/download/$TAG/$APP_NAME-$APP_VERSION.dmg" $ED_ATTRS type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
+XML
+
+(cd "$DIST" && shasum -a 256 "$(basename "$DMG")" > SHA256SUMS.txt)
 echo "✓ $DMG"
-shasum -a 256 "$DMG"
+cat "$DIST/SHA256SUMS.txt"
+
+if [[ -n "${PUBLISH:-}" ]]; then
+  echo "→ Publicando $TAG en GitHub…"
+  git -C "$ROOT" tag -a "$TAG" -m "$APP_NAME $APP_VERSION" 2>/dev/null || true
+  git -C "$ROOT" push -q origin "$TAG"
+  NOTES_ARGS=(--generate-notes)
+  [[ -n "${NOTES_FILE:-}" ]] && NOTES_ARGS=(--notes-file "$NOTES_FILE")
+  gh release create "$TAG" "$DMG" "$DIST/appcast.xml" "$DIST/SHA256SUMS.txt" \
+    --repo crhistian-cornejo/cleantrash --title "$APP_NAME $APP_VERSION" --latest "${NOTES_ARGS[@]}"
+fi

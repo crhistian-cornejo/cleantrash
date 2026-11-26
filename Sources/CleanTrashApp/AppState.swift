@@ -120,6 +120,7 @@ final class AppState {
     // Coding agents (Claude Code, Codex, Antigravity, T3 Code) reporting through hooks
     let agents = AgentMonitor()
     let hud = SystemHUDMonitor()
+    let updater = AppUpdater()
 
     // Droppy-class Media (Spotify / Apple Music + Synced Lyrics), Productivity & Hardened Password Vault
     let media = MediaPlayerController()

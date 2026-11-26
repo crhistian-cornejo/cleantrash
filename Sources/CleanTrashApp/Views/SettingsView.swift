@@ -130,6 +130,32 @@ struct SettingsView: View {
             divider
             toggleRow("Mascota de agentes", isOn: $appState.settings.agentMascotEnabled)
         }
+        updatesGroup
+    }
+
+    @ViewBuilder
+    private var updatesGroup: some View {
+        @Bindable var updater = appState.updater
+        group("Actualizaciones", note: "Versión \(updater.version)") {
+            if updater.isAvailable {
+                toggleRow("Buscar automáticamente", isOn: $updater.automaticallyChecks)
+                divider
+                HStack(spacing: 12) {
+                    rowLabel("Buscar ahora")
+                    Spacer()
+                    Button("Buscar actualizaciones") { updater.checkForUpdates() }
+                        .buttonStyle(MonoGhostButtonStyle())
+                        .disabled(!updater.canCheckForUpdates)
+                }
+                .padding(.vertical, 8)
+            } else {
+                HStack {
+                    rowLabel("No disponible en compilaciones de desarrollo")
+                    Spacer()
+                }
+                .padding(.vertical, 10)
+            }
+        }
     }
 
     // MARK: - Notch

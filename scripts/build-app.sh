@@ -32,6 +32,13 @@ if [[ -x "$HOOK_BIN" ]]; then
   cp "$HOOK_BIN" "$APP_BUNDLE/Contents/MacOS/cleantrash-hook"
 fi
 
+# Sparkle (auto-updates). The binary looks for it via @executable_path/../Frameworks.
+SPARKLE_FW="$(dirname "$BIN_PATH")/Sparkle.framework"
+if [[ -d "$SPARKLE_FW" ]]; then
+  mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+  ditto "$SPARKLE_FW" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+fi
+
 # Generate monochrome AppIcon.icns from assets/icon.svg if sips + iconutil exist
 ICONSET="$DIST_DIR/AppIcon.iconset"
 rm -rf "$ICONSET"
@@ -81,6 +88,14 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <string>public.app-category.utilities</string>
   <key>LSMinimumSystemVersion</key>
   <string>15.0</string>
+  <key>SUFeedURL</key>
+  <string>https://github.com/crhistian-cornejo/cleantrash/releases/latest/download/appcast.xml</string>
+  <key>SUPublicEDKey</key>
+  <string>xy+fVg1oW0RPFNd9LbXpETtBkRAfHeenCitFNFLrrmU=</string>
+  <key>SUEnableAutomaticChecks</key>
+  <true/>
+  <key>SUScheduledCheckInterval</key>
+  <integer>86400</integer>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSDesktopFolderUsageDescription</key>

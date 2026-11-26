@@ -11,6 +11,9 @@ let package = Package(
         .executable(name: "CleanTrash", targets: ["CleanTrashApp"]),
         .executable(name: "cleantrash-hook", targets: ["CleanTrashHook"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")
+    ],
     targets: [
         .target(
             name: "CleanTrashCore",
@@ -26,7 +29,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "CleanTrashApp",
-            dependencies: ["CleanTrashCore"],
+            dependencies: ["CleanTrashCore", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/CleanTrashApp",
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -38,7 +41,8 @@ let package = Package(
                 .linkedFramework("CoreAudio"),
                 .linkedFramework("Translation"),
                 .linkedFramework("LocalAuthentication"),
-                .linkedFramework("Security")
+                .linkedFramework("Security"),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]
         ),
         .executableTarget(
