@@ -60,7 +60,9 @@ if [[ -f "$APP/Contents/Resources/AppIcon.icns" ]]; then
   cp "$APP/Contents/Resources/AppIcon.icns" "$MNT/.VolumeIcon.icns"
   SetFile -a C "$MNT" 2>/dev/null || true
 fi
-hdiutil detach "$MNT" >/dev/null
+# Spotlight/Finder may still hold the fresh volume for a moment.
+for _ in 1 2 3 4 5; do hdiutil detach "$MNT" >/dev/null 2>&1 && break; sleep 2; done
+[[ -d "$MNT" ]] && hdiutil detach -force "$MNT" >/dev/null
 hdiutil convert "$RW" -format UDZO -o "$DMG" -ov >/dev/null
 rm -f "$RW"
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"
