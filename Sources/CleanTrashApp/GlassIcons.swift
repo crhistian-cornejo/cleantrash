@@ -29,7 +29,6 @@ struct GlassLayeredIcon: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var localHover = false
-    @State private var pulsePhase = false
 
     /// Unit scale factor from the 104px Glass Dock design grid.
     private var u: CGFloat { size / 104.0 }
@@ -82,7 +81,7 @@ struct GlassLayeredIcon: View {
         case .disk, .diskmap: return Color(hex: 0xFF5C93)
         case .vault, .memory: return Color(hex: 0x1FB26E)
         case .cpu: return Color(hex: 0x6366F1)
-        case .gpu: return Color(hex: 0x38BDF8)
+        case .gpu: return Mono.gpuAccent
         case .apps: return Color(hex: 0x8B5CF6)
         case .settings: return Color(hex: 0x64748B)
         }
@@ -287,8 +286,8 @@ struct GlassLayeredIcon: View {
                         .frame(width: 28 * u, height: 7 * u)
                         .overlay(
                             HStack(spacing: 4 * u) {
-                                Circle().fill(Color(hex: 0x38BDF8)).frame(width: 3 * u, height: 3 * u)
-                                Circle().fill(Color(hex: 0x6EE7B7)).frame(width: 3 * u, height: 3 * u)
+                                Circle().fill(Mono.gpuAccent).frame(width: 3 * u, height: 3 * u)
+                                Circle().fill(Mono.ramAccent).frame(width: 3 * u, height: 3 * u)
                             }
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -474,13 +473,13 @@ struct GlassLayeredIcon: View {
         return ZStack(alignment: .topLeading) {
             // Solid indigo-blue display core
             RoundedRectangle(cornerRadius: 16 * u, style: .continuous)
-                .fill(LinearGradient(colors: [Color(hex: 0x60A5FA), Color(hex: 0x4F46E5)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [Mono.infoAccent, Color(hex: 0x4F46E5)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 74 * u, height: 54 * u)
                 .offset(x: 15 * u, y: (12 - 3 * k) * u)
 
             // Emerald health orb glowing behind corner
             Circle()
-                .fill(RadialGradient(colors: [Color(hex: 0x6EE7B7), Color(hex: 0x10B981)], center: .center, startRadius: 1 * u, endRadius: 16 * u))
+                .fill(RadialGradient(colors: [Mono.ramAccent, Color(hex: 0x10B981)], center: .center, startRadius: 1 * u, endRadius: 16 * u))
                 .frame(width: 28 * u, height: 28 * u)
                 .offset(x: (66 + 4 * k) * u, y: (8 - 3 * k) * u)
 
@@ -497,7 +496,7 @@ struct GlassLayeredIcon: View {
                     .foregroundStyle(.white.opacity(0.95))
                     .rotationEffect(.degrees(22 * k))
                     .scaleEffect(1 + 0.14 * k)
-                    .shadow(color: Color(hex: 0x3B82F6).opacity(0.4), radius: 4 * u)
+                    .shadow(color: Mono.appsAccent.opacity(0.4), radius: 4 * u)
             }
             .frame(width: 86 * u, height: 62 * u)
             .offset(x: 9 * u, y: 24 * u)
@@ -519,18 +518,18 @@ struct GlassLayeredIcon: View {
             // Edge pins
             HStack(spacing: 12 * u) {
                 ForEach(0..<3, id: \.self) { _ in
-                    Capsule().fill(Color(hex: 0x818CF8)).frame(width: 6 * u, height: 86 * u)
+                    Capsule().fill(Mono.cpuAccent).frame(width: 6 * u, height: 86 * u)
                 }
             }
             VStack(spacing: 12 * u) {
                 ForEach(0..<3, id: \.self) { _ in
-                    Capsule().fill(Color(hex: 0x818CF8)).frame(width: 86 * u, height: 6 * u)
+                    Capsule().fill(Mono.cpuAccent).frame(width: 86 * u, height: 6 * u)
                 }
             }
 
             // Solid indigo silicon core
             RoundedRectangle(cornerRadius: 16 * u, style: .continuous)
-                .fill(LinearGradient(colors: [Color(hex: 0x818CF8), Color(hex: 0x4F46E5)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [Mono.cpuAccent, Color(hex: 0x4F46E5)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 58 * u, height: 58 * u)
                 .rotationEffect(.degrees(6 * k))
 
@@ -559,7 +558,7 @@ struct GlassLayeredIcon: View {
         return ZStack(alignment: .topLeading) {
             // Solid emerald-teal PCB back
             RoundedRectangle(cornerRadius: 14 * u, style: .continuous)
-                .fill(LinearGradient(colors: [Color(hex: 0x34D399), Color(hex: 0x059669)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [Mono.healthy, Color(hex: 0x059669)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 82 * u, height: 48 * u)
                 .offset(x: 11 * u, y: (16 - 4 * k) * u)
 
@@ -593,12 +592,12 @@ struct GlassLayeredIcon: View {
         let k: CGFloat = engaged ? 1.0 : 0.0
         return ZStack(alignment: .topLeading) {
             Circle()
-                .fill(RadialGradient(colors: [Color(hex: 0x38BDF8), Color(hex: 0x0284C7)], center: .center, startRadius: 2 * u, endRadius: 28 * u))
+                .fill(RadialGradient(colors: [Mono.gpuAccent, Color(hex: 0x0284C7)], center: .center, startRadius: 2 * u, endRadius: 28 * u))
                 .frame(width: 50 * u, height: 50 * u)
                 .offset(x: (12 - 4 * k) * u, y: (12 - 3 * k) * u)
 
             Circle()
-                .fill(RadialGradient(colors: [Color(hex: 0xA78BFA), Color(hex: 0x6366F1)], center: .center, startRadius: 2 * u, endRadius: 24 * u))
+                .fill(RadialGradient(colors: [Mono.networkAccent, Color(hex: 0x6366F1)], center: .center, startRadius: 2 * u, endRadius: 24 * u))
                 .frame(width: 44 * u, height: 44 * u)
                 .offset(x: (48 + 4 * k) * u, y: (16 + 3 * k) * u)
 
@@ -774,19 +773,6 @@ private struct GlassMountainShape: Shape {
 }
 
 // MARK: - Glass Dock Magnification & Hover Micro-Interaction Physics (Adapted from render.ts)
-
-enum GlassDockPhysics {
-    /// Gaussian magnification scale (adapted from Glass Dock's `1 + MAGNIFY * exp(-((c - px)/FALLOFF)^2)`).
-    static func magnification(distance: CGFloat, maxBoost: CGFloat = 0.34, falloff: CGFloat = 68) -> CGFloat {
-        1.0 + maxBoost * exp(-pow(distance / falloff, 2))
-    }
-
-    /// Normalized 3D tilt angle factor (-1...1) pointing toward the cursor.
-    static func tiltFactor(delta: CGFloat, range: CGFloat = 54) -> Double {
-        let clamped = min(1, max(-1, delta / range))
-        return Double(clamped) * Double(exp(-pow(delta / (range * 1.8), 2)))
-    }
-}
 
 /// Floating Frosted Label Pill (`tip` in Glass Dock) that rises cleanly above a hovered dock item.
 struct GlassDockTooltipPill: View {

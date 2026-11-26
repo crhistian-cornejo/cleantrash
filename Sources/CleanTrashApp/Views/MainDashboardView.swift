@@ -112,7 +112,7 @@ struct MainDashboardView: View {
 
             // Section list
             VStack(spacing: 4) {
-                ForEach(DashboardSection.allCases) { section in
+                ForEach(DashboardSection.sidebar) { section in
                     sidebarRow(section)
                 }
             }
@@ -123,21 +123,7 @@ struct MainDashboardView: View {
             // Footer: Live Vitals (colored like Notch) + Surface & Notch Quick Pills
             if isCollapsed {
                 VStack(spacing: 10) {
-                    Button {
-                        withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
-                            appState.settings.notchSurface = activeSurface.next
-                        }
-                        AppKitHaptics.tap()
-                    } label: {
-                        Image(systemName: activeSurface.symbol)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Mono.gpuAccent)
-                            .frame(width: 38, height: 34)
-                            .background(Capsule().fill(Mono.ink(activeScheme).opacity(0.09)))
-                    }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
-                    .help("Superficie: \(activeSurface.label)")
+                    sidebarRow(.settings)
 
                     Button {
                         onToggleNotch()
@@ -226,23 +212,6 @@ struct MainDashboardView: View {
                         }
                         Spacer()
 
-                        // 1-click Dynamic Glass / Liquid Glass / Negro cycle
-                        Button {
-                            withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
-                                appState.settings.notchSurface = activeSurface.next
-                            }
-                            AppKitHaptics.tap()
-                        } label: {
-                            Image(systemName: activeSurface.symbol)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(activeSurface.isGlass ? Mono.gpuAccent : Mono.muted(activeScheme))
-                                .frame(width: 24, height: 22)
-                                .background(Capsule().fill(Mono.ink(activeScheme).opacity(0.09)))
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                        .help("Superficie: \(activeSurface.label)")
-
                         Button {
                             onToggleNotch()
                             AppKitHaptics.tap()
@@ -279,7 +248,12 @@ struct MainDashboardView: View {
                 }
                 .padding(12)
                 .monoCard(radius: 15)
-                .padding(12)
+                .padding(.horizontal, 12)
+
+                sidebarRow(.settings)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
             }
         }
         .frame(width: isCollapsed ? 68 : 232)
@@ -292,18 +266,16 @@ struct MainDashboardView: View {
     }
 
     private func sidebarRow(_ section: DashboardSection) -> some View {
-        let isSelected = appState.selectedSection == section
+        let isSelected = appState.selectedSection.sidebarRow == section
         let isHovered = hoveredSection == section
         let badge = badgeText(for: section)
         let isLiveIcon = isSelected || (section == .notchHub && appState.media.isPlaying) || (section == .vault && appState.vault.isUnlocked)
         return Button {
             withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
-                appState.selectedSection = section
+                // Re-selecting Limpieza keeps whichever tab was open.
+                if appState.selectedSection.sidebarRow != section { appState.selectedSection = section }
             }
             AppKitHaptics.tap()
-            if section == .diskMap && appState.diskRoot == nil && !appState.isMappingDisk {
-                Task { await appState.mapDisk() }
-            }
         } label: {
             if isCollapsed {
                 ZStack(alignment: .topTrailing) {
@@ -413,10 +385,13 @@ struct MainDashboardView: View {
             let shelfCount = appState.productivity.shelfItems.count
             if appState.media.isPlaying { return "♪" }
             return shelfCount > 0 ? "\(shelfCount)" : nil
-        case .devRadar:
-            return appState.reclaimableDevBytes > 0 ? ByteFormat.compact(appState.reclaimableDevBytes) : nil
         case .systemJunk:
-            return appState.reclaimableJunkBytes > 0 ? ByteFormat.compact(appState.reclaimableJunkBytes) : nil
+            let total = appState.reclaimableJunkBytes + appState.reclaimableDevBytes
+            return total > 0 ? ByteFormat.compact(total) : nil
+        case .agents:
+            if !appState.agents.pending.isEmpty { return "\(appState.agents.pending.count)" }
+            let working = appState.agents.earStack.count
+            return working > 0 ? "\(working)" : nil
         case .appsAudit:
             return appState.unusedApps.isEmpty ? nil : "\(appState.unusedApps.count)"
         default:
@@ -436,6 +411,63 @@ struct MainDashboardView: View {
                 .foregroundStyle(Mono.ink(activeScheme))
                 .frame(width: 30, alignment: .trailing)
                 .contentTransition(.numericText())
+        }
+    }
+
+    // MARK: - Limpieza tabs
+
+    @Namespace private var cleanupNamespace
+
+    private var cleanupTabBar: some View {
+        HStack(spacing: 4) {
+            ForEach(DashboardSection.cleanupTabs) { tab in
+                let selected = appState.selectedSection == tab
+                Button {
+                    withAnimation(reduceMotion ? .none : Mono.betweenSpring) { appState.selectedSection = tab }
+                    AppKitHaptics.tap()
+                    if tab == .diskMap && appState.diskRoot == nil && !appState.isMappingDisk {
+                        Task { await appState.mapDisk() }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(tab.tabTitle)
+                            .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                        if let badge = cleanupBadge(tab) {
+                            Text(badge)
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(Mono.muted(activeScheme))
+                        }
+                    }
+                    .foregroundStyle(selected ? Mono.ink(activeScheme) : Mono.muted(activeScheme))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background {
+                        if selected {
+                            Capsule()
+                                .fill(Mono.ink(activeScheme).opacity(activeScheme == .dark ? 0.12 : 0.08))
+                                .matchedGeometryEffect(id: "cleanupTab", in: cleanupNamespace)
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Mono.ink(activeScheme).opacity(0.04)))
+        .overlay(Capsule().strokeBorder(Mono.hairline(activeScheme), lineWidth: 0.75))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func cleanupBadge(_ tab: DashboardSection) -> String? {
+        switch tab {
+        case .systemJunk:
+            return appState.reclaimableJunkBytes > 0 ? ByteFormat.compact(appState.reclaimableJunkBytes) : nil
+        case .devRadar:
+            return appState.reclaimableDevBytes > 0 ? ByteFormat.compact(appState.reclaimableDevBytes) : nil
+        default:
+            return nil
         }
     }
 
@@ -550,6 +582,12 @@ struct MainDashboardView: View {
                 }
             }
 
+            if appState.selectedSection.sidebarRow == .systemJunk {
+                cleanupTabBar
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+            }
+
             // Active Route
             Group {
                 switch appState.selectedSection {
@@ -569,6 +607,8 @@ struct MainDashboardView: View {
                     AppsAuditView(appState: appState)
                 case .performance:
                     PerformanceView(appState: appState)
+                case .agents:
+                    AgentsView(appState: appState)
                 case .settings:
                     SettingsView(appState: appState)
                 }

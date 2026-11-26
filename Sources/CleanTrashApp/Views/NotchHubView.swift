@@ -38,7 +38,6 @@ struct NotchHubView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 headerRow
-                notchWidgetStudioCard
                 musicAndLyricsRow
                 shelfAndClipboardRow
                 breatherAndTranslateRow
@@ -47,6 +46,8 @@ struct NotchHubView: View {
             }
             .padding(20)
         }
+        .onAppear { hub.isHubVisible = true }
+        .onDisappear { hub.isHubVisible = false }
     }
 
     // MARK: - Header + Quick Notch Surface Controls
@@ -56,12 +57,12 @@ struct NotchHubView: View {
             Icon3D(name: .notch, size: 54)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text("Centro Notch")
+                    Text("Notch")
                         .font(.system(size: 28, weight: .light))
                         .foregroundStyle(Mono.ink(scheme))
                     MonoTag(text: appState.settings.notchSurface.label, tint: Mono.gpuAccent)
                 }
-                Text("Gestiona tus widgets del Notch, Mascota IA, Traductor en Mac, Breather, Música, Bandeja y Portapapeles.")
+                Text("Música, bandeja, notas y herramientas del Notch.")
                     .font(.system(size: 13))
                     .foregroundStyle(Mono.muted(scheme))
                     .lineLimit(1)
@@ -78,21 +79,6 @@ struct NotchHubView: View {
             }
             .buttonStyle(MonoGhostButtonStyle())
             .help("Abrir traductor rápido en este Mac (⌥⇧T)")
-
-            // Agent Mascot toggle
-            Button {
-                withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
-                    appState.settings.agentMascotEnabled.toggle()
-                }
-                AppKitHaptics.tap()
-            } label: {
-                Label(
-                    appState.settings.agentMascotEnabled ? "Mascota ON" : "Mascota IA",
-                    systemImage: appState.settings.agentMascotEnabled ? "face.smiling.inverse" : "face.smiling"
-                )
-            }
-            .buttonStyle(MonoGhostButtonStyle())
-            .help("Mostrar u ocultar mascota flotante de agentes IA (⌥⇧M)")
 
             // Floating Mini-Player pop-out
             Button {
@@ -115,6 +101,15 @@ struct NotchHubView: View {
             .help("Pantalla completa Spotify Karaoke y Widgets arrastrables (⌥⇧L)")
 
             Button {
+                appState.settingsPane = .notch
+                appState.selectedSection = .settings
+            } label: {
+                Label("Personalizar", systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(MonoGhostButtonStyle())
+            .help("Estilo, widgets y lo que se ve junto a la cámara")
+
+            Button {
                 onToggleNotch()
                 AppKitHaptics.tap()
             } label: {
@@ -122,157 +117,6 @@ struct NotchHubView: View {
             }
             .buttonStyle(MonoPrimaryButtonStyle())
         }
-    }
-
-    // MARK: - Live Notch Widget Manager & Appearance Studio
-
-    private var notchWidgetStudioCard: some View {
-        let active = appState.settings.homeWidgets
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.grid.2x2.fill")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Mono.cpuAccent)
-                    Text("Gestor de Widgets del Notch (\(active.count)/4 activos)")
-                        .font(.system(size: 11.5, weight: .bold))
-                        .foregroundStyle(Mono.ink(scheme))
-                }
-
-                Spacer()
-
-                Picker("", selection: $appState.settings.notchStyle) {
-                    Text("Notch").tag(NotchStyleMode.notch)
-                    Text("Isla").tag(NotchStyleMode.island)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 140)
-
-                Picker("", selection: $appState.settings.notchSurface) {
-                    Text("Negro").tag(NotchSurfaceMode.obsidian)
-                    Text("Dynamic Glass").tag(NotchSurfaceMode.glass)
-                    Text("Liquid Glass").tag(NotchSurfaceMode.clearGlass)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 268)
-            }
-
-            // Active Home Bar Order Preview (move left/right/remove in 1 click)
-            HStack(spacing: 8) {
-                ForEach(Array(active.enumerated()), id: \.element) { idx, widget in
-                    HStack(spacing: 6) {
-                        Image(systemName: widget.symbol)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Mono.gpuAccent)
-                        Text(widget.title)
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(Mono.ink(scheme))
-                            .lineLimit(1)
-                        Spacer(minLength: 2)
-                        if idx > 0 {
-                            Button {
-                                swapHomeWidget(idx, idx - 1)
-                            } label: {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(Mono.muted(scheme))
-                                    .frame(width: 18, height: 18)
-                                    .background(Circle().fill(Mono.ink(scheme).opacity(0.08)))
-                            }
-                            .buttonStyle(.plain)
-                            .pointingHandCursor()
-                        }
-                        if idx < active.count - 1 {
-                            Button {
-                                swapHomeWidget(idx, idx + 1)
-                            } label: {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(Mono.muted(scheme))
-                                    .frame(width: 18, height: 18)
-                                    .background(Circle().fill(Mono.ink(scheme).opacity(0.08)))
-                            }
-                            .buttonStyle(.plain)
-                            .pointingHandCursor()
-                        }
-                        if active.count > 1 {
-                            Button {
-                                toggleHomeWidget(widget)
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 8.5, weight: .bold))
-                                    .foregroundStyle(Mono.danger)
-                                    .frame(width: 18, height: 18)
-                                    .background(Circle().fill(Mono.danger.opacity(0.14)))
-                            }
-                            .buttonStyle(.plain)
-                            .pointingHandCursor()
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .frame(maxWidth: .infinity)
-                    .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Mono.ink(scheme).opacity(0.07)))
-                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Mono.hairline(scheme), lineWidth: 0.8))
-                }
-            }
-
-            // All 14 Widget Toggle Catalog
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), spacing: 7)], spacing: 7) {
-                ForEach(NotchWidgetID.allCases) { widget in
-                    let isOn = active.contains(widget)
-                    Button {
-                        toggleHomeWidget(widget)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: widget.symbol)
-                                .font(.system(size: 10.5, weight: .semibold))
-                            Text(widget.title)
-                                .font(.system(size: 11, weight: .semibold))
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            if isOn {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 11))
-                            }
-                        }
-                        .foregroundStyle(isOn ? Mono.primaryInk(scheme) : Mono.ink(scheme).opacity(0.84))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(isOn ? Mono.primaryFill(scheme) : Mono.ink(scheme).opacity(0.065)))
-                    }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
-                }
-            }
-        }
-        .padding(16)
-        .monoCard(radius: 18, glass: true)
-    }
-
-    private func toggleHomeWidget(_ widget: NotchWidgetID) {
-        var current = appState.settings.homeWidgets
-        if let idx = current.firstIndex(of: widget) {
-            guard current.count > 1 else { return }
-            current.remove(at: idx)
-        } else {
-            if current.count >= 4 { current.removeFirst() }
-            current.append(widget)
-        }
-        withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
-            appState.settings.homeWidgets = current
-        }
-        AppKitHaptics.tap()
-    }
-
-    private func swapHomeWidget(_ a: Int, _ b: Int) {
-        var current = appState.settings.homeWidgets
-        guard current.indices.contains(a), current.indices.contains(b) else { return }
-        withAnimation(reduceMotion ? .none : Mono.betweenSpring) {
-            current.swapAt(a, b)
-            appState.settings.homeWidgets = current
-        }
-        AppKitHaptics.tap()
     }
 
     // MARK: - Breather + Quick Translate Interactive Row
@@ -923,7 +767,7 @@ struct NotchHubView: View {
 
     private func richClipCard(_ entry: ClipboardEntry) -> some View {
         let isColor = entry.kind == .color && entry.hexColor != nil
-        let colorFill = entry.hexColor.flatMap { parseHex($0) }
+        let colorFill = entry.hexColor.flatMap { Color(hexString: $0) }
         let cardFill: Color = colorFill ?? Mono.ink(scheme).opacity(scheme == .dark ? 0.06 : 0.05)
         let badgeFg: Color = isColor ? .black : Mono.ink(scheme)
         let badgeBg: Color = isColor ? Color.white.opacity(0.88) : Mono.ink(scheme).opacity(0.11)
@@ -1356,14 +1200,7 @@ struct NotchHubView: View {
     }
 
     private func formatTime(_ seconds: Double) -> String {
-        let s = max(0, Int(seconds.rounded()))
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
-    private func parseHex(_ hex: String) -> Color? {
-        let cleaned = hex.trimmingCharacters(in: CharacterSet(charactersIn: "# "))
-        guard cleaned.count == 6, let val = UInt32(cleaned, radix: 16) else { return nil }
-        return Color(hex: val)
+        TimeFormat.clock(seconds)
     }
 
     private func handleFileDrop(providers: [NSItemProvider]) -> Bool {

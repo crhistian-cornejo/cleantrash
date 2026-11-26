@@ -486,7 +486,7 @@ struct OverviewView: View {
                 }
                 .buttonStyle(MonoGhostButtonStyle())
 
-                Button("Centro Notch") {
+                Button("Notch") {
                     withAnimation(Mono.betweenSpring) {
                         appState.selectedSection = .notchHub
                     }

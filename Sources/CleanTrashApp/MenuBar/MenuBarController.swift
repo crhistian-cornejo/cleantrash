@@ -1,9 +1,9 @@
 import AppKit
 import CleanTrashCore
-import Foundation
+import SwiftUI
 
-/// Monochrome macOS menu bar status item displaying live RAM & GPU telemetry
-/// with quick access to the Dynamic Notch, RAM/GPU optimization, and main dashboard.
+/// Menu bar item: one template icon plus (optionally) a single live value. Left click opens a
+/// popover with Salud · Agentes · Música; right click shows the classic menu.
 @MainActor
 final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
@@ -11,6 +11,7 @@ final class MenuBarController: NSObject {
     private let onOpenDashboard: () -> Void
     private let onToggleNotch: () -> Void
     private var refreshTimer: Timer?
+    private let popover = NSPopover()
 
     init(
         appState: AppState,
@@ -24,10 +25,11 @@ final class MenuBarController: NSObject {
         super.init()
 
         configureButton()
-        rebuildMenu()
+        configurePopover()
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
+                guard !SystemActivity.isIdle else { return }
                 self?.updateTitle()
             }
         }
@@ -40,150 +42,300 @@ final class MenuBarController: NSObject {
             button.image = symbol
             button.imagePosition = .imageLeading
         }
+        button.target = self
+        button.action = #selector(buttonClicked)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         updateTitle()
     }
 
-    private func updateTitle() {
+    private func configurePopover() {
+        popover.behavior = .transient
+        popover.animates = true
+        popover.contentViewController = NSHostingController(rootView: MenuBarPopoverView(
+            appState: appState,
+            onOpenDashboard: { [weak self] in self?.closePopover(); self?.onOpenDashboard() },
+            onOpenSection: { [weak self] section in
+                self?.closePopover()
+                self?.appState.selectedSection = section
+                self?.onOpenDashboard()
+            },
+            onToggleNotch: { [weak self] in self?.closePopover(); self?.onToggleNotch() }
+        ))
+    }
+
+    /// Icon alone, or icon + one value. A small amber/red dot appears only when something needs attention.
+    func updateTitle() {
         guard let button = statusItem.button else { return }
-        let cpu = Int(appState.telemetry.cpuTotalPercent.rounded())
-        let ram = Int(appState.telemetry.memory.usedPercent.rounded())
-        let gpu = Int(appState.telemetry.gpu.deviceUtilizationPercent.rounded())
+        let t = appState.telemetry
+        let cpu = Int(t.cpuTotalPercent.rounded())
+        let ram = Int(t.memory.usedPercent.rounded())
+        let gpu = Int(t.gpu.deviceUtilizationPercent.rounded())
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        let title = " \(cpu)% · \(ram)% · \(gpu)%"
-        button.attributedTitle = NSAttributedString(
-            string: title,
-            attributes: [.font: font]
-        )
-        button.toolTip = "CleanTrash · CPU \(cpu)% · RAM \(ram)% · GPU \(gpu)%"
+
+        let text: String
+        switch appState.settings.menuBarDisplay {
+        case .iconOnly: text = ""
+        case .memory: text = " \(ram)%"
+        case .cpu: text = " \(cpu)%"
+        case .all: text = " \(cpu)% · \(ram)% · \(gpu)%"
+        }
+        let title = NSMutableAttributedString(string: text, attributes: [.font: font])
+        let health = appState.macHealth
+        if health.level != .good {
+            let color: NSColor = health.level == .critical ? .systemRed : .systemOrange
+            title.append(NSAttributedString(string: " ●", attributes: [
+                .font: NSFont.systemFont(ofSize: 7),
+                .foregroundColor: color,
+                .baselineOffset: 2
+            ]))
+        }
+        button.attributedTitle = title
+        button.toolTip = "CleanTrash · CPU \(cpu)% · RAM \(ram)% · GPU \(gpu)%" + (health.reason.map { " · \($0)" } ?? "")
     }
 
-    private func rebuildMenu() {
+    @objc private func buttonClicked() {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            showMenu()
+        } else if popover.isShown {
+            closePopover()
+        } else if let button = statusItem.button {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    private func closePopover() {
+        popover.performClose(nil)
+    }
+
+    // MARK: Right-click menu
+
+    private func showMenu() {
         let menu = NSMenu()
-        menu.delegate = self
+        let items: [(String, Selector, String)] = [
+            ("Abrir CleanTrash", #selector(openDashboardAction), "o"),
+            ("Mostrar/ocultar Notch", #selector(toggleNotchAction), "n"),
+            ("Analizar Mac", #selector(smartScanAction), "s"),
+            ("Liberar RAM", #selector(optimizeRAMAction), "r")
+        ]
+        for (title, action, key) in items {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "Salir de CleanTrash", action: #selector(quitAction), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
+
         statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
     }
 
-    @objc private func openDashboardAction() {
-        onOpenDashboard()
-    }
-
-    @objc private func toggleNotchAction() {
-        onToggleNotch()
-    }
-
-    @objc private func optimizeRAMAction() {
-        Task { await appState.optimizeRAM() }
-    }
-
-    @objc private func trimGPUAction() {
-        Task { await appState.trimGPUCaches() }
-    }
-
-    @objc private func emptyTrashAction() {
-        let alert = NSAlert()
-        alert.messageText = "¿Vaciar la Papelera?"
-        alert.informativeText = "Los elementos se borrarán definitivamente. No se puede deshacer."
-        alert.addButton(withTitle: "Vaciar Papelera")
-        alert.addButton(withTitle: "Cancelar")
-        alert.buttons.first?.hasDestructiveAction = true
-        NSApp.activate()
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        Task { await appState.emptyTrashNow() }
-    }
-
-    @objc private func smartScanAction() {
-        Task { await appState.runSmartScan() }
-    }
-
-    @objc private func openUnusedAppsAction() {
-        appState.selectedSection = .appsAudit
-        onOpenDashboard()
-    }
-
-    @objc private func quitAction() {
-        NSApp.terminate(nil)
-    }
+    @objc private func openDashboardAction() { onOpenDashboard() }
+    @objc private func toggleNotchAction() { onToggleNotch() }
+    @objc private func optimizeRAMAction() { Task { await appState.optimizeRAM() } }
+    @objc private func smartScanAction() { Task { await appState.runSmartScan() } }
+    @objc private func quitAction() { NSApp.terminate(nil) }
 }
 
-extension MenuBarController: NSMenuDelegate {
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
+// MARK: - Popover
 
+private struct MenuBarPopoverView: View {
+    @Bindable var appState: AppState
+    let onOpenDashboard: () -> Void
+    let onOpenSection: (DashboardSection) -> Void
+    let onToggleNotch: () -> Void
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            healthBlock
+            if !appState.agents.earStack.isEmpty || !appState.agents.pending.isEmpty {
+                divider
+                agentsBlock
+            }
+            if appState.media.track != nil {
+                divider
+                musicBlock
+            }
+            divider
+            footer
+        }
+        .padding(14)
+        .frame(width: 300)
+    }
+
+    // Salud: verdict, three meters, one action.
+
+    private var healthBlock: some View {
+        let health = appState.macHealth
         let t = appState.telemetry
-        let header = NSMenuItem(
-            title: "CleanTrash · RAM \(Int(t.memory.usedPercent))% · GPU \(Int(t.gpu.deviceUtilizationPercent))% · CPU \(Int(t.cpuTotalPercent))%",
-            action: nil,
-            keyEquivalent: ""
-        )
-        header.isEnabled = false
-        menu.addItem(header)
-
-        let diskInfo = NSMenuItem(
-            title: "\(t.disk.volumeName): \(ByteFormat.compact(t.disk.availableBytes)) libres · \(ByteFormat.compact(appState.totalSmartReclaimableBytes)) recuperables",
-            action: nil,
-            keyEquivalent: ""
-        )
-        diskInfo.isEnabled = false
-        menu.addItem(diskInfo)
-
-        if !t.externalVolumes.isEmpty {
-            for vol in t.externalVolumes {
-                let volItem = NSMenuItem(
-                    title: "Disco \(vol.name): \(ByteFormat.compact(vol.availableBytes)) libres",
-                    action: nil,
-                    keyEquivalent: ""
-                )
-                volItem.isEnabled = false
-                menu.addItem(volItem)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Circle().fill(health.tint).frame(width: 7, height: 7)
+                Text(health.label)
+                    .font(.system(size: 13, weight: .semibold))
+                if let reason = health.reason {
+                    Text(reason)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                meter("CPU", t.cpuTotalPercent)
+                meter("RAM", t.memory.usedPercent)
+                meter("GPU", t.gpu.deviceUtilizationPercent)
+            }
+            HStack {
+                Text("\(ByteFormat.compact(t.disk.availableBytes)) libres")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                primaryAction
             }
         }
+    }
 
-        menu.addItem(.separator())
-
-        let openItem = NSMenuItem(title: "Abrir panel", action: #selector(openDashboardAction), keyEquivalent: "o")
-        openItem.target = self
-        menu.addItem(openItem)
-
-        let notchItem = NSMenuItem(title: "Mostrar/ocultar Notch", action: #selector(toggleNotchAction), keyEquivalent: "n")
-        notchItem.target = self
-        menu.addItem(notchItem)
-
-        if !appState.unusedApps.isEmpty {
-            let unusedItem = NSMenuItem(
-                title: "Revisar apps sin usar (\(appState.unusedApps.count))",
-                action: #selector(openUnusedAppsAction),
-                keyEquivalent: "u"
-            )
-            unusedItem.target = self
-            menu.addItem(unusedItem)
+    @ViewBuilder
+    private var primaryAction: some View {
+        let reclaimable = appState.totalSmartReclaimableBytes
+        if appState.isCleaning || appState.isOptimizingRAM {
+            ProgressView().controlSize(.small)
+        } else if appState.macHealth.area == .cpu, appState.macHealth.level != .good {
+            Button("Ver procesos") { onOpenSection(.performance) }
+                .buttonStyle(MonoPrimaryButtonStyle())
+        } else if appState.telemetry.memory.pressure != .normal {
+            Button("Liberar RAM") { Task { await appState.optimizeRAM() } }
+                .buttonStyle(MonoPrimaryButtonStyle())
+        } else if reclaimable >= 500_000_000 {
+            Button("Limpiar \(ByteFormat.compact(reclaimable))") { onOpenSection(.overview) }
+                .buttonStyle(MonoPrimaryButtonStyle())
+        } else {
+            Button("Analizar") { Task { await appState.runSmartScan() } }
+                .buttonStyle(MonoGhostButtonStyle())
         }
+    }
 
-        menu.addItem(.separator())
+    private func meter(_ label: String, _ value: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Int(value.rounded()))%")
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .contentTransition(.numericText())
+            }
+            MonoProgressBar(value: value / 100, height: 4, tint: value >= 92 ? Mono.danger : value >= 80 ? Mono.caution : Mono.ink(scheme))
+        }
+        .frame(maxWidth: .infinity)
+    }
 
-        let ramItem = NSMenuItem(title: "Optimizar RAM ahora", action: #selector(optimizeRAMAction), keyEquivalent: "r")
-        ramItem.target = self
-        menu.addItem(ramItem)
+    // Agentes: what each one is doing right now.
 
-        let gpuItem = NSMenuItem(title: "Limpiar cachés de GPU", action: #selector(trimGPUAction), keyEquivalent: "g")
-        gpuItem.target = self
-        menu.addItem(gpuItem)
+    private var agentsBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Agentes").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Spacer()
+                if !appState.agents.pending.isEmpty {
+                    Button("Responder (\(appState.agents.pending.count))", action: onToggleNotch)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Mono.caution)
+                }
+            }
+            ForEach(appState.agents.earStack.prefix(3)) { session in
+                Button { appState.agents.focus(session) } label: {
+                    HStack(spacing: 8) {
+                        ProviderLogo(source: session.source, size: 18)
+                        Text(session.project)
+                            .font(.system(size: 12, weight: .medium))
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text(NotchAgentsEar.liveActivity(session))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
-        let trashTitle = appState.trashContents.itemCount > 0
-            ? "Vaciar Papelera (\(ByteFormat.compact(appState.trashContents.totalBytes)))…"
-            : "Vaciar Papelera…"
-        let trashItem = NSMenuItem(title: trashTitle, action: #selector(emptyTrashAction), keyEquivalent: "")
-        trashItem.target = self
-        trashItem.isEnabled = !appState.isCleaning
-        menu.addItem(trashItem)
+    // Música: one compact row.
 
-        let scanItem = NSMenuItem(title: "Analizar Mac", action: #selector(smartScanAction), keyEquivalent: "s")
-        scanItem.target = self
-        menu.addItem(scanItem)
+    @ViewBuilder
+    private var musicBlock: some View {
+        let media = appState.media
+        if let track = media.track {
+            HStack(spacing: 10) {
+                Group {
+                    if let art = media.artwork {
+                        Image(nsImage: art).resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Image(systemName: "music.note").frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.secondary.opacity(0.15))
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(track.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Text(track.artist).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                Button { media.togglePlayPause() } label: {
+                    Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                Button { media.nextTrack() } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
-        menu.addItem(.separator())
+    private var footer: some View {
+        HStack(spacing: 14) {
+            Button("Abrir CleanTrash", action: onOpenDashboard)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+            Spacer()
+            iconButton("rectangle.topthird.inset.filled", help: "Notch", action: onToggleNotch)
+            iconButton("gearshape", help: "Ajustes") {
+                appState.settingsPane = .general
+                onOpenSection(.settings)
+            }
+            iconButton("power", help: "Salir") { NSApp.terminate(nil) }
+        }
+    }
 
-        let quitItem = NSMenuItem(title: "Salir de CleanTrash", action: #selector(quitAction), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
+    private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private var divider: some View {
+        Divider().opacity(0.6)
     }
 }

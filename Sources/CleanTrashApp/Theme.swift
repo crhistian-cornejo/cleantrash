@@ -3,6 +3,15 @@ import SwiftUI
 
 /// High-contrast Dynamic Glass & Monochrome design system unified across the Dynamic Notch
 /// and the Main Dashboard Window for macOS 26/27 Liquid Glass + crisp tabular telemetry.
+/// "3:07" style clock for track positions and timers.
+enum TimeFormat {
+    static func clock(_ seconds: Double) -> String {
+        guard seconds.isFinite else { return "0:00" }
+        let total = max(0, Int(seconds.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
 enum Mono {
     /// Debug snapshots: ImageRenderer can't draw Liquid Glass, so cards fall back to flat fills.
     nonisolated(unsafe) static var snapshotMode = false
@@ -68,7 +77,9 @@ enum Mono {
     static let appsAccent = Color(hex: 0x3B82F6)    // Blue
     static let junkAccent = Color(hex: 0xF59E0B)    // Amber
     static let networkAccent = Color(hex: 0xA78BFA) // Violet
-    static let batteryAccent = Color(hex: 0x34D399) // Emerald
+    static let batteryAccent = healthy               // Emerald
+    static let infoAccent = Color(hex: 0x60A5FA)    // Sky blue
+    static let dangerStrong = Color(hex: 0xEF4444)  // Red
 
     /// Subtle luminance ramp for charts & treemaps (high legibility on glass & obsidian).
     static func shade(_ index: Int, scheme: ColorScheme) -> Color {
@@ -99,7 +110,6 @@ enum Mono {
     static let betweenSpring = Animation.spring(response: 0.20, dampingFraction: 0.95)
     static let foldingSpring = Animation.spring(response: 0.26, dampingFraction: 1.0)
     static let emphasized = Animation.timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.28)
-    static let quick = Animation.timingCurve(0.0, 0.0, 0.58, 1.0, duration: 0.18)
     static let fast = Animation.easeOut(duration: 0.14)
 }
 
@@ -109,6 +119,13 @@ extension Color {
         let g = Double((hex >> 8) & 0xFF) / 255.0
         let b = Double(hex & 0xFF) / 255.0
         self.init(.sRGB, red: r, green: g, blue: b, opacity: opacity)
+    }
+
+    /// "#RRGGBB" / "RRGGBB" from clipboard text; nil for anything else.
+    init?(hexString: String) {
+        let cleaned = hexString.trimmingCharacters(in: CharacterSet(charactersIn: "# "))
+        guard cleaned.count == 6, let value = UInt32(cleaned, radix: 16) else { return nil }
+        self.init(hex: value)
     }
 }
 
@@ -256,14 +273,6 @@ extension View {
         modifier(MonoCardModifier(cornerRadius: radius, interactive: interactive, useGlass: glass))
     }
 
-    @ViewBuilder
-    func monoGlassPill(interactive: Bool = true) -> some View {
-        if !Mono.snapshotMode, #available(macOS 26.0, *) {
-            self.glassEffect(interactive ? .regular.interactive() : .regular, in: .capsule)
-        } else {
-            self.background(.ultraThinMaterial, in: Capsule())
-        }
-    }
 }
 
 // MARK: - Reusable Notch-Matched 3D Metric Ring

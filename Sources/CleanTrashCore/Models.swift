@@ -800,6 +800,20 @@ public enum NotchOpenTrigger: String, CaseIterable, Sendable, Codable {
     case click
 }
 
+/// What the menu bar item shows next to its icon.
+public enum MenuBarDisplay: String, CaseIterable, Sendable, Codable {
+    case iconOnly, memory, cpu, all
+
+    public var label: String {
+        switch self {
+        case .iconOnly: return "Solo ícono"
+        case .memory: return "Memoria"
+        case .cpu: return "CPU"
+        case .all: return "Todo"
+        }
+    }
+}
+
 public struct CleanTrashSettings: Sendable, Codable, Equatable {
     public var watchedDevFolders: [String]
     public var devAlertThresholdGB: Double
@@ -827,6 +841,9 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
     public var monochromeAppearance: String // "dark", "light", "system"
     public var agentMascotEnabled: Bool
     public var breatherEnabled: Bool
+    /// Volume / brightness changes appear in the notch (and replace the macOS overlay when Accessibility is on).
+    public var systemHUDInNotch: Bool
+    public var menuBarDisplay: MenuBarDisplay
 
     public init(
         watchedDevFolders: [String] = CleanTrashSettings.defaultDevFolders(),
@@ -854,7 +871,9 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         sidebarCollapsed: Bool = false,
         monochromeAppearance: String = "dark",
         agentMascotEnabled: Bool = false,
-        breatherEnabled: Bool = true
+        breatherEnabled: Bool = true,
+        systemHUDInNotch: Bool = true,
+        menuBarDisplay: MenuBarDisplay = .memory
     ) {
         self.watchedDevFolders = watchedDevFolders
         self.devAlertThresholdGB = devAlertThresholdGB
@@ -882,6 +901,8 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         self.monochromeAppearance = monochromeAppearance
         self.agentMascotEnabled = agentMascotEnabled
         self.breatherEnabled = breatherEnabled
+        self.systemHUDInNotch = systemHUDInNotch
+        self.menuBarDisplay = menuBarDisplay
     }
 
     public init(from decoder: Decoder) throws {
@@ -914,6 +935,8 @@ public struct CleanTrashSettings: Sendable, Codable, Equatable {
         self.monochromeAppearance = (try? c.decodeIfPresent(String.self, forKey: .monochromeAppearance)) ?? d.monochromeAppearance
         self.agentMascotEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .agentMascotEnabled)) ?? d.agentMascotEnabled
         self.breatherEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .breatherEnabled)) ?? d.breatherEnabled
+        self.systemHUDInNotch = (try? c.decodeIfPresent(Bool.self, forKey: .systemHUDInNotch)) ?? d.systemHUDInNotch
+        self.menuBarDisplay = (try? c.decodeIfPresent(MenuBarDisplay.self, forKey: .menuBarDisplay)) ?? d.menuBarDisplay
     }
 
     public static func defaultDevFolders() -> [String] {

@@ -10,9 +10,12 @@ APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 
 echo "→ Building $APP_NAME ($CONFIG) with Swift…"
 cd "$ROOT"
-swift build -c "$CONFIG"
+# BUILD_ARCHS="arm64 x86_64" builds a universal binary (used by scripts/release.sh).
+ARCH_FLAGS=()
+for arch in ${BUILD_ARCHS:-}; do ARCH_FLAGS+=(--arch "$arch"); done
+swift build -c "$CONFIG" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}
 
-BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)/$APP_NAME"
+BIN_PATH="$(swift build -c "$CONFIG" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)/$APP_NAME"
 if [[ ! -x "$BIN_PATH" ]]; then
   echo "✗ Built binary not found at $BIN_PATH" >&2
   exit 1
@@ -27,12 +30,6 @@ cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 HOOK_BIN="$(dirname "$BIN_PATH")/cleantrash-hook"
 if [[ -x "$HOOK_BIN" ]]; then
   cp "$HOOK_BIN" "$APP_BUNDLE/Contents/MacOS/cleantrash-hook"
-fi
-
-# 3D glass icons (Nano Banana renders keyed by scripts/process-icons.swift)
-if [ -d "$ROOT/assets/icons3d" ]; then
-  mkdir -p "$APP_BUNDLE/Contents/Resources/Icons3D"
-  cp "$ROOT"/assets/icons3d/*.png "$APP_BUNDLE/Contents/Resources/Icons3D/"
 fi
 
 # Generate monochrome AppIcon.icns from assets/icon.svg if sips + iconutil exist
@@ -77,9 +74,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.0</string>
+  <string>${APP_VERSION:-1.0.0}</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>${BUILD_NUMBER:-1}</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.utilities</string>
   <key>LSMinimumSystemVersion</key>
@@ -122,7 +119,9 @@ cat > "$ENTITLEMENTS" <<ENTEOF
 </plist>
 ENTEOF
 
-if [[ -n "$SIGN_IDENTITY" ]]; then
+if [[ -n "${SKIP_SIGN:-}" ]]; then
+  echo "→ Skipping signing (release.sh signs for distribution)"
+elif [[ -n "$SIGN_IDENTITY" ]]; then
   echo "→ Signing ${APP_BUNDLE} with ${SIGN_IDENTITY}..."
   codesign --force --deep --options runtime --timestamp=none --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$APP_BUNDLE" >/dev/null 2>&1 \
     || codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_BUNDLE" >/dev/null 2>&1 \

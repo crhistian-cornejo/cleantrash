@@ -201,7 +201,7 @@ enum NotchSnapshotRenderer {
                 endRadius: 420
             )
             RadialGradient(
-                colors: [Color(hex: 0x38BDF8).opacity(0.16), .clear],
+                colors: [Mono.gpuAccent.opacity(0.16), .clear],
                 center: UnitPoint(x: 0.80, y: 0.20),
                 startRadius: 10,
                 endRadius: 380

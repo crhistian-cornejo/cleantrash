@@ -129,7 +129,7 @@ private struct AmbientStandByView: View {
 
     private var media: MediaPlayerController { appState.media }
     private var accent: Color { media.hasActiveTrack ? media.palette.primary : Color(hex: 0x6366F1) }
-    private var secondary: Color { media.hasActiveTrack ? media.palette.secondary : Color(hex: 0x38BDF8) }
+    private var secondary: Color { media.hasActiveTrack ? media.palette.secondary : Mono.gpuAccent }
 
     var body: some View {
         ZStack {

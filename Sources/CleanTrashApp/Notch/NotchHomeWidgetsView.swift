@@ -17,6 +17,7 @@ struct NotchHomeWidgetsView: View {
     @Environment(\.notchSurface) private var surface
     @State private var draggedWidget: NotchWidgetID?
     @State private var hoverScrubFraction: Double?
+    @State private var isScrubHovering = false
 
     // Devly widget inline state
     @State private var devlyMode: DevlyMode = .base64
@@ -115,7 +116,7 @@ struct NotchHomeWidgetsView: View {
                                 .font(.system(size: 8.5, weight: .black))
                                 .foregroundStyle(.white)
                                 .frame(width: 18, height: 18)
-                                .background(Circle().fill(Color(hex: 0xEF4444)))
+                                .background(Circle().fill(Mono.dangerStrong))
                         }
                         .buttonStyle(.plain)
                         .pointingHandCursor()
@@ -179,8 +180,8 @@ struct NotchHomeWidgetsView: View {
         let media = appState.media
         return Group {
             if let track = media.track {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(spacing: 11) {
                         Button { media.openPlayerApp() } label: {
                             ZStack {
                                 if let art = media.artwork {
@@ -196,14 +197,20 @@ struct NotchHomeWidgetsView: View {
                                     )
                                     .overlay {
                                         Image(systemName: "music.note")
-                                            .font(.system(size: 16, weight: .bold))
+                                            .font(.system(size: 17, weight: .bold))
                                             .foregroundStyle(.white)
                                     }
                                 }
                             }
-                            .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.16), lineWidth: 0.75))
+                            .frame(width: 50, height: 50)
+                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 0.75))
+                            // Artwork glows in its own color and settles back when paused (Music-app style).
+                            .shadow(color: media.palette.primary.opacity(media.isPlaying ? 0.45 : 0.15), radius: media.isPlaying ? 10 : 4, y: 3)
+                            .scaleEffect(media.isPlaying ? 1 : 0.92)
+                            .animation(reduceMotion ? .none : .spring(response: 0.45, dampingFraction: 0.72), value: media.isPlaying)
+                            .id(track.trackKey)
+                            .transition(.opacity.combined(with: .scale(scale: 0.9)))
                         }
                         .buttonStyle(.plain)
                         .pointingHandCursor()
@@ -211,7 +218,7 @@ struct NotchHomeWidgetsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Button { media.openTrackInPlayer() } label: {
                                 Text(track.title)
-                                    .font(.system(size: 13.5, weight: .bold))
+                                    .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
@@ -222,8 +229,8 @@ struct NotchHomeWidgetsView: View {
 
                             Button { media.openArtistInPlayer() } label: {
                                 Text(track.artist)
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(Color.white.opacity(0.58))
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(Color.white.opacity(0.55))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                             }
@@ -231,6 +238,11 @@ struct NotchHomeWidgetsView: View {
                             .pointingHandCursor()
                             .help("Ver perfil de \(track.artist) en \(track.source.rawValue)")
                         }
+                        .id(track.trackKey)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .offset(y: 6)),
+                            removal: .opacity.combined(with: .offset(y: -6))
+                        ))
 
                         Spacer(minLength: 2)
 
@@ -243,77 +255,56 @@ struct NotchHomeWidgetsView: View {
                             barWidth: 2.2
                         )
                     }
+                    .animation(reduceMotion ? .none : Mono.betweenSpring, value: track.trackKey)
 
                     compactScrubber(track)
 
-                    HStack {
-                        Button {
-                            withAnimation(Mono.openingSpring) {
-                                coordinator.showLyricsTheater = true
-                            }
-                        } label: {
-                            Image(systemName: "quote.bubble")
-                                .font(.system(size: 11.5, weight: .semibold))
-                                .foregroundStyle(Color.white.opacity(0.62))
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
-                        .help("Letras sincronizadas")
+                    HStack(spacing: 0) {
+                        lyricsButton(media)
 
                         Spacer()
 
-                        HStack(spacing: 16) {
+                        HStack(spacing: 18) {
                             Button { media.previousTrack() } label: {
                                 Image(systemName: "backward.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.white.opacity(0.9))
+                                    .frame(width: 26, height: 26)
                             }
-                            .buttonStyle(NotchButtonStyle(hoverScale: 1.12))
+                            .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
 
                             Button { media.togglePlayPause() } label: {
                                 Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 26, height: 24)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.black)
+                                    .contentTransition(.symbolEffect(.replace))
+                                    .frame(width: 32, height: 32)
+                                    .background(Circle().fill(.white))
                             }
-                            .buttonStyle(NotchButtonStyle(hoverScale: 1.12))
+                            .buttonStyle(NotchButtonStyle(hoverScale: 1.08))
+                            .help(media.isPlaying ? "Pausar" : "Reproducir")
 
                             Button { media.nextTrack() } label: {
                                 Image(systemName: "forward.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.white.opacity(0.9))
+                                    .frame(width: 26, height: 26)
                             }
-                            .buttonStyle(NotchButtonStyle(hoverScale: 1.12))
+                            .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
                         }
 
                         Spacer()
 
-                        // Droppy Floating Mini-Player pop-out button!
                         Button {
                             appState.productivity.floatingPlayer.toggle(media: media, surface: surface)
                         } label: {
                             Image(systemName: "pip.enter")
                                 .font(.system(size: 11.5, weight: .semibold))
-                                .foregroundStyle(Color.white.opacity(0.65))
-                                .frame(width: 24, height: 24)
+                                .foregroundStyle(Color.white.opacity(0.55))
+                                .frame(width: 26, height: 26)
                         }
                         .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
-                        .help("Abrir reproductor flotante en el escritorio")
-                    }
-
-                    if let lyric = media.currentLyricLine {
-                        Button {
-                            withAnimation(Mono.openingSpring) { coordinator.showLyricsTheater = true }
-                        } label: {
-                            Text(lyric)
-                                .font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.72))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
+                        .help("Abrir reproductor flotante")
                     }
                 }
                 .padding(.vertical, 4)
@@ -364,6 +355,26 @@ struct NotchHomeWidgetsView: View {
         }
     }
 
+    /// Lyrics live in their own theater; here it's just a button that lights up when synced lyrics exist.
+    private func lyricsButton(_ media: MediaPlayerController) -> some View {
+        let synced = media.lyrics?.isSynced == true
+        let available = media.lyrics.map { !$0.isEmpty } ?? false
+        return Button {
+            withAnimation(Mono.openingSpring) { coordinator.showLyricsTheater = true }
+        } label: {
+            Image(systemName: available ? "quote.bubble.fill" : "quote.bubble")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(available ? media.palette.primary.opacity(0.95) : Color.white.opacity(0.4))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(available ? media.palette.primary.opacity(0.14) : .clear))
+        }
+        .buttonStyle(NotchButtonStyle(hoverScale: 1.1))
+        .disabled(!available)
+        .help(synced ? "Letras sincronizadas" : available ? "Letras" : "Sin letras para esta canción")
+        .animation(Mono.betweenSpring, value: available)
+    }
+
     private func compactScrubber(_ track: NowPlayingTrack) -> some View {
         let media = appState.media
         let frac = hoverScrubFraction ?? media.progress
@@ -376,10 +387,12 @@ struct NotchHomeWidgetsView: View {
                 .foregroundStyle(Color.white.opacity(0.52))
             GeometryReader { geo in
                 let w = max(1, geo.size.width)
+                let thick: CGFloat = isScrubHovering || media.isScrubbing ? 6 : 3.5
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 5)
-                    Capsule().fill(Color.white.opacity(0.65)).frame(width: max(5, w * frac), height: 5)
+                    Capsule().fill(Color.white.opacity(0.14)).frame(height: thick)
+                    Capsule().fill(Color.white.opacity(isScrubHovering ? 0.95 : 0.75)).frame(width: max(thick, w * frac), height: thick)
                 }
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: thick)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
@@ -398,6 +411,7 @@ struct NotchHomeWidgetsView: View {
                 )
             }
             .frame(height: 12)
+            .onHover { isScrubHovering = $0 }
             .pointingHandCursor()
             Text("-\(Self.formatTime(remaining))")
                 .font(.system(size: 9.5, weight: .medium).monospacedDigit())
@@ -411,9 +425,9 @@ struct NotchHomeWidgetsView: View {
         let cpu = appState.telemetry.cpuTotalPercent
         let ram = appState.telemetry.memory.usedPercent
         let gpu = appState.telemetry.gpu.deviceUtilizationPercent
-        let cpuColor = Color(hex: 0x818CF8)
-        let ramColor = Color(hex: 0x6EE7B7)
-        let gpuColor = Color(hex: 0x38BDF8)
+        let cpuColor = Mono.cpuAccent
+        let ramColor = Mono.ramAccent
+        let gpuColor = Mono.gpuAccent
 
         return VStack(spacing: 8) {
             // Top Row: 3 Glowing Rings with our Custom 3D Glass Icons centered inside!
@@ -571,7 +585,7 @@ struct NotchHomeWidgetsView: View {
                     Button { monitor.focus(lead) } label: {
                         Image(systemName: "arrow.up.forward")
                             .font(.system(size: 9.5, weight: .bold))
-                            .foregroundStyle(Color(hex: 0x6EE7B7))
+                            .foregroundStyle(Mono.ramAccent)
                             .frame(width: 22, height: 22)
                             .background(Circle().fill(Color(hex: 0x10B981).opacity(0.22)))
                     }
@@ -664,7 +678,7 @@ struct NotchHomeWidgetsView: View {
 
     private var pomodoroCompactWidget: some View {
         let hub = appState.productivity
-        let amber = Color(hex: 0xF59E0B)
+        let amber = Mono.junkAccent
 
         return VStack(spacing: 10) {
             Spacer(minLength: 0)
@@ -890,7 +904,7 @@ struct NotchHomeWidgetsView: View {
                 HStack(spacing: 4) {
                     Text("\(weekdayTitle) \(dayNum)")
                         .font(.system(size: 9.5, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xEF4444))
+                        .foregroundStyle(Mono.dangerStrong)
                     Text(monthTitle)
                         .font(.system(size: 9.5, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.45))
@@ -979,7 +993,7 @@ struct NotchHomeWidgetsView: View {
                                 .font(.system(size: 8, weight: idx == today ? .bold : .medium).monospacedDigit())
                                 .foregroundStyle(idx == today ? .white : Color.white.opacity(0.75))
                                 .frame(width: 14, height: 14)
-                                .background(Circle().fill(idx == today ? Color(hex: 0xEF4444) : .clear))
+                                .background(Circle().fill(idx == today ? Mono.dangerStrong : .clear))
                                 .frame(maxWidth: .infinity)
                         } else {
                             Color.clear.frame(height: 14).frame(maxWidth: .infinity)
@@ -1075,7 +1089,7 @@ struct NotchHomeWidgetsView: View {
             HStack(spacing: 6) {
                 Text(devlyOutput.isEmpty ? "Resultado aparecerá aquí…" : devlyOutput)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(devlyOutput.isEmpty ? Color.white.opacity(0.35) : Color(hex: 0x6EE7B7))
+                    .foregroundStyle(devlyOutput.isEmpty ? Color.white.opacity(0.35) : Mono.ramAccent)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1118,7 +1132,7 @@ struct NotchHomeWidgetsView: View {
             HStack(spacing: 6) {
                 Image(systemName: "speaker.wave.2.fill")
                     .font(.system(size: 10.5, weight: .bold))
-                    .foregroundStyle(Color(hex: 0xF59E0B))
+                    .foregroundStyle(Mono.junkAccent)
                 Text(hub.audioOutputName)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
@@ -1204,7 +1218,7 @@ struct NotchHomeWidgetsView: View {
             HStack {
                 Label("Portapapeles", systemImage: "doc.on.clipboard")
                     .font(.system(size: 10.5, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x60A5FA))
+                    .foregroundStyle(Mono.infoAccent)
                 Spacer()
                 Button("Ver todo") {
                     withAnimation(Mono.betweenSpring) {
@@ -1290,7 +1304,7 @@ struct NotchHomeWidgetsView: View {
                 }
                 Text("Notas")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(hex: 0xFBBF24))
+                    .foregroundStyle(Mono.caution)
                 Spacer()
                 Button {
                     _ = hub.createNote()
@@ -1358,18 +1372,18 @@ struct NotchHomeWidgetsView: View {
             VStack(spacing: 7) {
                 ZStack {
                     Circle()
-                        .fill(on ? Color(hex: 0xF59E0B).opacity(0.24) : Color.white.opacity(0.08))
+                        .fill(on ? Mono.junkAccent.opacity(0.24) : Color.white.opacity(0.08))
                         .frame(width: 44, height: 44)
                     Image(systemName: on ? "cup.and.saucer.fill" : "moon.zzz.fill")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(on ? Color(hex: 0xFBBF24) : Color.white.opacity(0.65))
+                        .foregroundStyle(on ? Mono.caution : Color.white.opacity(0.65))
                 }
                 Text("Despierto")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(on ? "Pantalla activa" : "Toca para activar")
                     .font(.system(size: 9.5, weight: .medium))
-                    .foregroundStyle(on ? Color(hex: 0xFBBF24) : Color.white.opacity(0.45))
+                    .foregroundStyle(on ? Mono.caution : Color.white.opacity(0.45))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -1592,7 +1606,7 @@ struct NotchHomeWidgetsView: View {
                                     if isActive {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 12, weight: .bold))
-                                            .foregroundStyle(.white, Color(hex: 0x3B82F6))
+                                            .foregroundStyle(.white, Mono.appsAccent)
                                             .offset(x: 3, y: 3)
                                     }
                                 }
@@ -1649,17 +1663,17 @@ struct NotchHomeWidgetsView: View {
         case .nowPlaying: colors = [Color(hex: 0x1ED760), Color(hex: 0x15803D)]
         case .systemStats: colors = [Color(hex: 0x1E1B4B), Color(hex: 0x064E3B)]
         case .agents: colors = [Color(hex: 0xF97316), Color(hex: 0xEA580C)]
-        case .pomodoro: colors = [Color(hex: 0xF59E0B), Color(hex: 0xB45309)]
-        case .weather: colors = [Color(hex: 0x38BDF8), Color(hex: 0x2563EB)]
+        case .pomodoro: colors = [Mono.junkAccent, Color(hex: 0xB45309)]
+        case .weather: colors = [Mono.gpuAccent, Color(hex: 0x2563EB)]
         case .batteries: colors = [Color(hex: 0x166534), Color(hex: 0x14532D)]
-        case .calendar: colors = [Color(hex: 0xEF4444), Color(hex: 0xB91C1C)]
+        case .calendar: colors = [Mono.dangerStrong, Color(hex: 0xB91C1C)]
         case .devly: colors = [Color(hex: 0x1D4ED8), Color(hex: 0x1E3A8A)]
         case .clipboard: colors = [Color(hex: 0x8B5CF6), Color(hex: 0x6D28D9)]
         case .audio: colors = [Color(hex: 0x3F3F46), Color(hex: 0x18181B)]
         case .notes: colors = [Color(hex: 0xEAB308), Color(hex: 0xCA8A04)]
         case .stayAwake: colors = [Color(hex: 0xEC4899), Color(hex: 0x9333EA)]
-        case .translate: colors = [Color(hex: 0x38BDF8), Color(hex: 0x0284C7)]
-        case .breather: colors = [Color(hex: 0x34D399), Color(hex: 0x0D9488)]
+        case .translate: colors = [Mono.gpuAccent, Color(hex: 0x0284C7)]
+        case .breather: colors = [Mono.healthy, Color(hex: 0x0D9488)]
         }
         return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
@@ -1667,20 +1681,7 @@ struct NotchHomeWidgetsView: View {
     // MARK: - Reorder & Toggle Helpers
 
     private func toggleWidget(_ widget: NotchWidgetID) {
-        var current = appState.settings.homeWidgets
-        if let idx = current.firstIndex(of: widget) {
-            guard current.count > 1 else { return }
-            current.remove(at: idx)
-        } else {
-            if current.count >= 4 {
-                current.removeFirst()
-            }
-            current.append(widget)
-        }
-        withAnimation(Mono.betweenSpring) {
-            appState.settings.homeWidgets = current
-        }
-        AppKitHaptics.tap()
+        appState.toggleHomeWidget(widget)
     }
 
     private func moveWidget(at index: Int, by delta: Int) {
@@ -1695,9 +1696,7 @@ struct NotchHomeWidgetsView: View {
     }
 
     private static func formatTime(_ seconds: TimeInterval) -> String {
-        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
-        let total = Int(seconds.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
+        TimeFormat.clock(seconds)
     }
 }
 

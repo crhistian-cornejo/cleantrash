@@ -357,9 +357,10 @@ final class NotchWindowController {
         let hasLiveEars = appState.settings.showLiveNotchEars && (
             appState.activityLabel != nil
                 || !appState.agents.earStack.isEmpty
-                || (appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack)
+                || (appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack
+                    && !appState.productivity.floatingPlayer.isShown)
                 || appState.productivity.isTimerRunning
-        )
+        ) || appState.hud.current != nil
         let hitRect = coordinator.activeHitRect(
             in: stageSize,
             hasNotice: appState.activeNotice != nil,

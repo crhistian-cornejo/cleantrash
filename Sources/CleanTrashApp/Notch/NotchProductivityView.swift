@@ -574,7 +574,7 @@ struct NotchProductivityView: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.white)
                             .frame(width: 22, height: 22)
-                            .background(Capsule().fill(Color(hex: 0x3B82F6).opacity(0.45)))
+                            .background(Capsule().fill(Mono.appsAccent.opacity(0.45)))
                     }
                     .buttonStyle(.plain)
                     .pointingHandCursor()
@@ -659,13 +659,13 @@ struct NotchProductivityView: View {
                                     .font(.system(size: 10, weight: .bold))
                             } else {
                                 Circle()
-                                    .fill(f == .pinned ? Color(hex: 0xF59E0B) : Color(hex: 0x34D399))
+                                    .fill(f == .pinned ? Mono.junkAccent : Mono.healthy)
                                     .frame(width: 7, height: 7)
                             }
                             Text(f.rawValue)
                                 .font(.system(size: 10.5, weight: .semibold))
                         }
-                        .foregroundStyle(active && f == .all ? Color(hex: 0x60A5FA) : (active ? .white : Color.white.opacity(0.68)))
+                        .foregroundStyle(active && f == .all ? Mono.infoAccent : (active ? .white : Color.white.opacity(0.68)))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4.5)
                         .background(
@@ -744,7 +744,7 @@ struct NotchProductivityView: View {
                     Button { hub.togglePin(entry) } label: {
                         Image(systemName: entry.isPinned ? "pin.fill" : "pin")
                             .font(.system(size: 9.5, weight: .bold))
-                            .foregroundStyle(entry.isPinned ? Color(hex: 0xEF4444) : Color.black.opacity(0.6))
+                            .foregroundStyle(entry.isPinned ? Mono.dangerStrong : Color.black.opacity(0.6))
                             .frame(width: 20, height: 20)
                     }
                     .buttonStyle(.plain)
@@ -784,11 +784,11 @@ struct NotchProductivityView: View {
                     Spacer()
                     ZStack {
                         Circle()
-                            .fill(Color(hex: 0x3B82F6).opacity(0.24))
+                            .fill(Mono.appsAccent.opacity(0.24))
                             .frame(width: 42, height: 42)
                         Image(systemName: "globe")
                             .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(Color(hex: 0x60A5FA))
+                            .foregroundStyle(Mono.infoAccent)
                     }
                     Spacer()
                 }
@@ -853,7 +853,7 @@ struct NotchProductivityView: View {
     private func cardTypeTint(_ kind: ClipboardEntryKind) -> Color {
         switch kind {
         case .text: return Color(hex: 0x22C55E)
-        case .url: return Color(hex: 0x3B82F6)
+        case .url: return Mono.appsAccent
         case .color: return Color(hex: 0xEC4899)
         case .image: return Color(hex: 0xA855F7)
         }
@@ -869,9 +869,7 @@ struct NotchProductivityView: View {
     }
 
     private static func colorFromHex(_ hex: String) -> Color? {
-        let cleaned = hex.replacingOccurrences(of: "#", with: "")
-        guard let value = UInt32(cleaned, radix: 16) else { return nil }
-        return Color(hex: value)
+        Color(hexString: hex)
     }
 
     private static func rgbComponents(_ hex: String) -> (r: Int, g: Int, b: Int)? {
@@ -891,7 +889,7 @@ struct NotchProductivityView: View {
                     .trim(from: 0, to: min(1, max(0.01, 1.0 - hub.timerProgress)))
                     .stroke(
                         LinearGradient(
-                            colors: [hub.isTimerRunning ? Mono.healthy : .white, Color(hex: 0x60A5FA)],
+                            colors: [hub.isTimerRunning ? Mono.healthy : .white, Mono.infoAccent],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),

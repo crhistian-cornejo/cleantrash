@@ -57,8 +57,11 @@ final class AgentMascotWindowController {
         self.panel = p
     }
 
+    /// Tears the panel down so its 30 fps animation and blink task stop while hidden.
     func hide() {
         panel?.orderOut(nil)
+        panel?.contentView = nil
+        panel = nil
     }
 }
 
@@ -122,14 +125,14 @@ private struct AgentMascotRootView: View {
                 if let lead = monitor.sessions.first {
                     monitor.focus(lead)
                 } else {
-                    appState.selectedSection = .notchHub
+                    appState.selectedSection = .agents
                     appState.onOpenMainWindow?()
                 }
                 AppKitHaptics.tap()
             }
             .contextMenu {
-                Button("Abrir Centro Notch") {
-                    appState.selectedSection = .notchHub
+                Button("Ver agentes") {
+                    appState.selectedSection = .agents
                     appState.onOpenMainWindow?()
                 }
                 Button("Ocultar mascota", action: onHide)

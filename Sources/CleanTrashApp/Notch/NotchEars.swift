@@ -166,129 +166,7 @@ struct MarqueeText: View {
 
 // MARK: - Left ear: live metrics
 
-/// RAM · CPU · GPU with their 3D glass icons, refined compact spacing so the closed notch
-/// never crowds the concave curve or the system menu bar.
-struct NotchMetricsEar: View {
-    let memory: Double
-    let cpu: Double
-    let gpu: Double
-
-    var body: some View {
-        HStack(spacing: 5.5) {
-            metric(.memory, memory, label: "RAM")
-            metric(.cpu, cpu, label: "CPU")
-            metric(.gpu, gpu, label: "GPU")
-        }
-    }
-
-    private func metric(_ icon: Icon3DName, _ value: Double, label: String) -> some View {
-        let percent = Int(min(999, max(0, value)).rounded())
-        return HStack(spacing: 2) {
-            Icon3D(name: icon, size: 15)
-            Text("\(percent)%")
-                .font(.system(size: 9.5, weight: .bold).monospacedDigit())
-                .foregroundStyle(Self.tint(value))
-                .contentTransition(.numericText(value: Double(percent)))
-                .lineLimit(1)
-                .fixedSize()
-        }
-        .animation(Mono.betweenSpring, value: percent)
-        .help("\(label) \(percent)%")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label) \(percent) por ciento")
-    }
-
-    static func tint(_ value: Double) -> Color {
-        if value >= 92 { return Mono.danger }
-        if value >= 80 { return Mono.caution }
-        return Color.white.opacity(0.86)
-    }
-}
-
 // MARK: - Right ear (Music): Mini Album Artwork + Live Lyric / Track + Equalizer
-
-struct NotchMusicEar: View {
-    let media: MediaPlayerController
-    let showLyrics: Bool
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var labelKey: String {
-        if showLyrics, let lyric = media.currentLyricLine {
-            return "lyric:\(media.activeLyricIndex ?? -1):\(lyric)"
-        }
-        return "track:\(media.track?.id ?? ""):\(media.track?.title ?? "")"
-    }
-
-    private var displayedText: String {
-        if showLyrics, let lyric = media.currentLyricLine {
-            return lyric
-        }
-        return media.track?.title ?? ""
-    }
-
-    var body: some View {
-        if let track = media.track {
-            HStack(spacing: 6) {
-                Group {
-                    if let art = media.artwork {
-                        Image(nsImage: art)
-                            .resizable()
-                            .interpolation(.high)
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        LinearGradient(
-                            colors: [media.palette.primary, media.palette.secondary],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        .overlay {
-                            Image(systemName: "music.note")
-                                .font(.system(size: 8.5, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-                .frame(width: 18, height: 18)
-                .clipShape(RoundedRectangle(cornerRadius: 4.5, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                        .strokeBorder(.white.opacity(0.25), lineWidth: 0.6)
-                )
-
-                ZStack(alignment: .leading) {
-                    Text(displayedText)
-                        .id(labelKey)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(
-                            showLyrics && media.currentLyricLine != nil
-                                ? Color.white.opacity(0.95)
-                                : Color.white.opacity(0.86)
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .transition(.asymmetric(
-                            insertion: .blurMorph(scale: 0.92, y: 6),
-                            removal: .blurMorph(scale: 0.92, y: -6)
-                        ))
-                }
-                .animation(reduceMotion ? .none : Mono.betweenSpring, value: labelKey)
-
-                Spacer(minLength: 2)
-
-                AudioVisualizerBars(
-                    isPlaying: media.isPlaying,
-                    color: media.palette.primary,
-                    secondaryColor: media.palette.secondary,
-                    barCount: 3,
-                    maxHeight: 11,
-                    barWidth: 2
-                )
-            }
-            .help("\(track.title) — \(track.artist)")
-        }
-    }
-}
 
 struct NotchTimerEar: View {
     let formatted: String
@@ -318,7 +196,11 @@ enum EarTint {
 }
 
 struct NotchAgentsEar: View {
+    enum Part { case both, avatars, label }
+
     let stack: [AgentSession]
+    /// The stack can split across the camera: logos on the left ear, live activity on the right.
+    var part: Part = .both
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -332,8 +214,8 @@ struct NotchAgentsEar: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            avatars
-            label
+            if part != .label { avatars }
+            if part != .avatars { label }
         }
         .animation(reduceMotion ? .none : Mono.betweenSpring, value: visible.map(\.id))
         .animation(reduceMotion ? .none : Mono.betweenSpring, value: labelKey)

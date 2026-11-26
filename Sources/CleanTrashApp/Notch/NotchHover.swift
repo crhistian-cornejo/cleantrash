@@ -53,54 +53,6 @@ struct NotchHoverRow: ViewModifier {
     }
 }
 
-/// Card tiles (quick actions): darker card that brightens, strokes and lifts on hover.
-struct NotchCardHover: ViewModifier {
-    var cornerRadius: CGFloat = 11
-    var isArmed = false
-    var isEnabled = true
-    @Environment(\.notchSurface) private var surface
-    @State private var hovering = false
-
-    private var active: Bool { hovering && isEnabled }
-
-    func body(content: Content) -> some View {
-        let fillColor: Color = surface.isGlass
-            ? Color.white.opacity(active ? 0.11 : 0.055)
-            : Color(hex: active ? 0x1A1A1D : 0x111114)
-        let borderOpacity = surface.isGlass
-            ? (active ? 0.24 : 0.11)
-            : (active ? 0.26 : 0.10)
-
-        content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(fillColor)
-            )
-            .background(alignment: .topLeading) {
-                // Soft spotlight in the corner where the icon sits.
-                if active {
-                    Circle()
-                        .fill(Color.white.opacity(0.10))
-                        .frame(width: 70, height: 70)
-                        .blur(radius: 18)
-                        .offset(x: -10, y: -14)
-                        .transition(.opacity)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        isArmed ? Mono.danger.opacity(0.8) : Color.white.opacity(borderOpacity),
-                        lineWidth: 1
-                    )
-            )
-            .scaleEffect(active ? 1.015 : 1)
-            .animation(Mono.fast, value: active)
-            .onHover { hovering = $0 }
-    }
-}
-
 extension View {
     func notchHoverRow(cornerRadius: CGFloat = 8, base: Double = 0.04, hover: Double = 0.09) -> some View {
         modifier(NotchHoverRow(cornerRadius: cornerRadius, base: base, hover: hover))

@@ -27,7 +27,13 @@ struct AgentSession: Identifiable, Equatable {
 
     var project: String {
         guard let cwd, !cwd.isEmpty else { return source.shortName }
-        return URL(fileURLWithPath: cwd).lastPathComponent
+        let parts = URL(fileURLWithPath: cwd).pathComponents
+        // T3 Code worktrees live at ~/.t3/worktrees/<Proyecto>/t3-<hash>-<hash>: show the project.
+        if let index = parts.lastIndex(where: { $0.range(of: #"^t3-[0-9a-f]{6,}-[0-9a-f]{6,}$"#, options: .regularExpression) != nil }),
+           index > 0, parts[index - 1] != "worktrees" {
+            return parts[index - 1]
+        }
+        return parts.last ?? source.shortName
     }
 
     var isT3Code: Bool { t3ThreadID != nil || hostBundleID == "com.t3tools.t3code" }
@@ -105,10 +111,6 @@ final class AgentMonitor {
         }
     }
 
-    var workingCount: Int { sessions.filter { $0.phase.isWorking || $0.phase == .needsPermission }.count }
-
-    var anyInstalled: Bool { installed.values.contains(true) }
-
     /// Avatars for the closed notch's right ear, front first: waiting on you → just finished → busiest.
     var earStack: [AgentSession] {
         sessions
@@ -128,14 +130,6 @@ final class AgentMonitor {
 
     /// How long a finished agent stays at the front saying "Done" before leaving the stack.
     static let doneLinger: Duration = .milliseconds(2800)
-
-    /// Short label for the closed notch ear while agents work.
-    var earLabel: String? {
-        let working = sessions.filter { $0.phase.isWorking }
-        guard !working.isEmpty else { return nil }
-        if working.count == 1, let only = working.first { return only.source.shortName }
-        return "\(working.count) agentes"
-    }
 
     // MARK: Lifecycle
 

@@ -177,9 +177,9 @@ struct NotchCleanerView: View {
 
             // Category Legend Row (Apps · Limpiable · Sistema)
             HStack(spacing: 0) {
-                categoryStat(icon: "square.grid.2x2.fill", tint: Color(hex: 0x3B82F6), label: "Apps", value: ByteFormat.compact(appsBytes))
+                categoryStat(icon: "square.grid.2x2.fill", tint: Mono.appsAccent, label: "Apps", value: ByteFormat.compact(appsBytes))
                 Spacer(minLength: 8)
-                categoryStat(icon: "square.3.layers.3d.top.filled", tint: Color(hex: 0xF59E0B), label: "Basura", value: ByteFormat.compact(cleanableBytes))
+                categoryStat(icon: "square.3.layers.3d.top.filled", tint: Mono.junkAccent, label: "Basura", value: ByteFormat.compact(cleanableBytes))
                 Spacer(minLength: 8)
                 categoryStat(icon: "gearshape.fill", tint: Color.white.opacity(0.7), label: "Sistema", value: ByteFormat.compact(systemOtherBytes))
             }
@@ -228,7 +228,7 @@ struct NotchCleanerView: View {
                         } else {
                             Image(systemName: "sparkles")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Color(hex: 0x6EE7B7))
+                                .foregroundStyle(Mono.ramAccent)
                         }
                     }
                     .frame(width: 34, height: 34)
@@ -239,7 +239,7 @@ struct NotchCleanerView: View {
                     .overlay(
                         Circle()
                             .strokeBorder(
-                                armedAction == "smartClean" ? Mono.danger : Color(hex: 0x34D399).opacity(0.35),
+                                armedAction == "smartClean" ? Mono.danger : Mono.healthy.opacity(0.35),
                                 lineWidth: 1
                             )
                     )
@@ -531,9 +531,9 @@ struct DotMatrixStorageBar: View {
                     )
                     let color: Color
                     if idx < appsEnd {
-                        color = Color(hex: 0x3B82F6).opacity(row == 0 || row == 4 ? 0.78 : 0.98)
+                        color = Mono.appsAccent.opacity(row == 0 || row == 4 ? 0.78 : 0.98)
                     } else if idx < cleanEnd {
-                        color = Color(hex: 0xF59E0B).opacity(row == 0 || row == 4 ? 0.78 : 0.98)
+                        color = Mono.junkAccent.opacity(row == 0 || row == 4 ? 0.78 : 0.98)
                     } else if idx < sysEnd {
                         // Subtle organic luminance texture matching Droppy's dot matrix
                         let shimmer = ((col * 7 + row * 13) % 5 == 0) ? 0.42 : (((col + row) % 2 == 0) ? 0.68 : 0.56)

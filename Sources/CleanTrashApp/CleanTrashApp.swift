@@ -48,9 +48,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         appState.agents.canPrompt = { [weak appState] in appState?.settings.notchEnabled ?? false }
         appState.agents.start()
+        appState.hud.isEnabled = appState.settings.notchEnabled && appState.settings.systemHUDInNotch
+        appState.hud.start()
 
         appState.onSettingsChanged = { [weak self, weak notch, weak mascot] settings in
             notch?.applySettings(settings)
+            self?.menuBarController?.updateTitle()
             if let appState = self?.appState {
                 mascot?.setVisible(settings.agentMascotEnabled, appState: appState)
             }

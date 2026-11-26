@@ -38,7 +38,7 @@ struct DiskMapView: View {
                 Icon3D(name: .diskmap, size: 58)
                     .padding(.trailing, 8)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Mapa de Disco")
+                    Text("Mapa de disco")
                         .font(.system(size: 28, weight: .light))
                         .foregroundStyle(Mono.ink(scheme))
                     Text("Visualiza qué archivos y carpetas ocupan más espacio en tu Mac y limpia lo que ya no necesitas.")

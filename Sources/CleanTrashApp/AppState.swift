@@ -30,41 +30,48 @@ enum BannerTone: Equatable {
 
 enum DashboardSection: String, CaseIterable, Identifiable {
     case overview = "Inicio"
-    case notchHub = "Centro Notch"
-    case vault = "Bóveda"
-    case devRadar = "Dev Radar"
-    case diskMap = "Mapa de Disco"
     case systemJunk = "Limpieza"
+    case devRadar = "Proyectos"
+    case diskMap = "Mapa de disco"
     case appsAudit = "Apps"
     case performance = "Rendimiento"
+    case agents = "Agentes"
+    case notchHub = "Notch"
+    case vault = "Bóveda"
     case settings = "Ajustes"
 
     var id: String { rawValue }
 
-    var symbol: String {
+    /// Rows in the sidebar (Ajustes sits in the footer).
+    static let sidebar: [DashboardSection] = [.overview, .systemJunk, .appsAudit, .performance, .agents, .notchHub, .vault]
+
+    /// Tabs inside Limpieza.
+    static let cleanupTabs: [DashboardSection] = [.systemJunk, .devRadar, .diskMap]
+
+    /// The sidebar row that owns this section (cleanup tabs all live under Limpieza).
+    var sidebarRow: DashboardSection {
+        Self.cleanupTabs.contains(self) ? .systemJunk : self
+    }
+
+    /// Short label for a Limpieza tab.
+    var tabTitle: String {
         switch self {
-        case .overview: return "square.grid.2x2"
-        case .notchHub: return "rectangle.topthird.inset.filled"
-        case .vault: return "lock.shield"
-        case .devRadar: return "terminal"
-        case .diskMap: return "chart.pie"
-        case .systemJunk: return "trash"
-        case .appsAudit: return "app.badge.checkmark"
-        case .performance: return "gauge.with.dots.needle.67percent"
-        case .settings: return "slider.horizontal.3"
+        case .systemJunk: return "Sistema"
+        default: return rawValue
         }
     }
 
     var icon3D: Icon3DName {
         switch self {
         case .overview: return .smartcare
-        case .notchHub: return .notch
-        case .vault: return .vault
+        case .systemJunk: return .trash
         case .devRadar: return .dev
         case .diskMap: return .diskmap
-        case .systemJunk: return .trash
         case .appsAudit: return .apps
         case .performance: return .performance
+        case .agents: return .dev
+        case .notchHub: return .notch
+        case .vault: return .vault
         case .settings: return .settings
         }
     }
@@ -75,6 +82,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
 final class AppState {
     // Navigation
     var selectedSection: DashboardSection = .overview
+    var settingsPane: SettingsPane = .general
     var hasFullDiskAccess: Bool = PathSafety.hasFullDiskAccess()
 
     // Live Telemetry
@@ -98,7 +106,6 @@ final class AppState {
     var isAuditingApps = false
     var isOptimizingRAM = false
     var ramOptimizationProgress: Double = 0
-    var lastRAMOptimization: RAMOptimizationResult?
     var isCleaning = false
     var cleaningLabel: String?
     var statusBanner: String?
@@ -112,6 +119,7 @@ final class AppState {
 
     // Coding agents (Claude Code, Codex, Antigravity, T3 Code) reporting through hooks
     let agents = AgentMonitor()
+    let hud = SystemHUDMonitor()
 
     // Droppy-class Media (Spotify / Apple Music + Synced Lyrics), Productivity & Hardened Password Vault
     let media = MediaPlayerController()
@@ -120,7 +128,20 @@ final class AppState {
 
     // Notch Live Notices
     var activeNotice: NotchNotice?
-    var notchNoticeTriggerCount: Int = 0
+
+    /// Adds or removes a Home widget in the notch (max 4, never empty; adding a 5th drops the oldest).
+    func toggleHomeWidget(_ widget: NotchWidgetID) {
+        var current = settings.homeWidgets
+        if let index = current.firstIndex(of: widget) {
+            guard current.count > 1 else { return }
+            current.remove(at: index)
+        } else {
+            if current.count >= 4 { current.removeFirst() }
+            current.append(widget)
+        }
+        withAnimation(Mono.betweenSpring) { settings.homeWidgets = current }
+        AppKitHaptics.tap()
+    }
 
     // Settings
     var settings: CleanTrashSettings {
@@ -131,6 +152,9 @@ final class AppState {
             }
             productivity.clipboardEnabled = settings.clipboardHistoryEnabled
             productivity.breather.enabled = settings.breatherEnabled
+            productivity.activeWidgets = Set(settings.homeWidgets)
+            if oldValue.homeWidgets != settings.homeWidgets { productivity.refreshVisibleData() }
+            hud.isEnabled = settings.notchEnabled && settings.systemHUDInNotch
             onSettingsChanged?(settings)
         }
     }
@@ -164,10 +188,6 @@ final class AppState {
 
     var launchAtLoginEnabled: Bool {
         SMAppService.mainApp.status == .enabled
-    }
-
-    var isInstalledInApplications: Bool {
-        Bundle.main.bundleURL.path.hasPrefix("/Applications/")
     }
 
     init() {
@@ -222,6 +242,8 @@ final class AppState {
             self?.report(message, tone: tone)
         }
         media.start()
+        SystemActivity.start()
+        productivity.activeWidgets = Set(settings.homeWidgets)
         productivity.start()
 
         startTelemetryLoop()
@@ -245,10 +267,6 @@ final class AppState {
 
     var reclaimableJunkBytes: UInt64 {
         junkItems.filter(\.selected).reduce(0) { $0 + $1.sizeBytes }
-    }
-
-    var totalJunkBytes: UInt64 {
-        junkItems.reduce(0) { $0 + $1.sizeBytes }
     }
 
     var unusedApps: [InstalledAppInfo] {
@@ -388,7 +406,9 @@ final class AppState {
                 }
 
                 tick += 1
-                try? await Task.sleep(for: .seconds(2))
+                // Nobody is looking while the Mac is locked or asleep: sample far less often.
+                let idle = await MainActor.run { SystemActivity.isIdle }
+                try? await Task.sleep(for: .seconds(idle ? 15 : 2))
             }
         }
     }
@@ -653,7 +673,6 @@ final class AppState {
                 self?.ramOptimizationProgress = pct
             }
         }
-        lastRAMOptimization = result
         refreshMemoryNow()
         AppKitHaptics.confirm()
         report(result.reclaimedBytes > 0
@@ -716,7 +735,7 @@ final class AppState {
         defer { endCleaning() }
         let summary = await performDevClean(paths, sizes: sizes)
         refreshDiskNow()
-        reportCleanup(summary, title: "Dev Radar limpio")
+        reportCleanup(summary, title: "Proyectos limpios")
     }
 
     private func performDevClean(_ paths: [String], sizes: [String: UInt64]) async -> CleanupSummary {
@@ -1075,7 +1094,6 @@ final class AppState {
 
     func postNotice(_ notice: NotchNotice, autoDismissAfter seconds: Double = 7.0) {
         activeNotice = notice
-        notchNoticeTriggerCount += 1
         noticeDismissTask?.cancel()
         noticeDismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))

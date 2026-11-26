@@ -43,7 +43,7 @@ struct ArtworkPalette: Equatable {
     let primary: Color
     let secondary: Color
 
-    static let neutral = ArtworkPalette(primary: Color(hex: 0x60A5FA), secondary: Color(hex: 0xA78BFA))
+    static let neutral = ArtworkPalette(primary: Mono.infoAccent, secondary: Mono.networkAccent)
 }
 
 /// Live Spotify & Apple Music controller with album artwork color extraction, smooth position
@@ -148,7 +148,7 @@ final class MediaPlayerController {
                 if !self.isPreviewInjected {
                     await self.refreshNow()
                 }
-                let delay: Duration = self.isPlaying ? .seconds(2) : .seconds(4)
+                let delay: Duration = SystemActivity.isIdle ? .seconds(10) : (self.isPlaying ? .seconds(2) : .seconds(4))
                 try? await Task.sleep(for: delay)
             }
         }
@@ -157,7 +157,9 @@ final class MediaPlayerController {
         interpolationTask?.cancel()
         interpolationTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(160))
+                // Glide only while something plays and someone can see it; otherwise check back lazily.
+                let active = self?.isPlaying == true && !SystemActivity.isIdle
+                try? await Task.sleep(for: active ? .milliseconds(160) : .seconds(1))
                 guard let self, self.isPlaying, !self.isScrubbing, let track = self.track else { continue }
                 let elapsed = Date.now.timeIntervalSince(self.lastPositionAnchorDate)
                 let next = min(track.duration, max(0, self.lastPositionAnchorValue + elapsed))
@@ -367,10 +369,11 @@ final class MediaPlayerController {
         isScrubbing = false
         AppKitHaptics.tap()
 
-        let source = track.source
+        // AppleScript name is "Music", not the display name "Apple Music".
+        let appName = track.source == .spotify ? "Spotify" : "Music"
         Task.detached(priority: .userInitiated) {
             let script = """
-            tell application "\(source.rawValue)"
+            tell application "\(appName)"
                 set player position to \(String(format: "%.2f", clamped))
             end tell
             """
@@ -848,7 +851,7 @@ final class MediaPlayerController {
         isPlaying = true
         position = 64
         volume = 82
-        palette = ArtworkPalette(primary: Color(hex: 0xF472B6), secondary: Color(hex: 0x818CF8))
+        palette = ArtworkPalette(primary: Color(hex: 0xF472B6), secondary: Mono.cpuAccent)
         lyrics = LyricsDocument(
             trackKey: "m83::midnight city",
             syncedLines: [

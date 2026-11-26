@@ -36,9 +36,9 @@ enum BreatherBreakKind: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var tint: Color {
         switch self {
-        case .eyes: return Color(hex: 0x38BDF8)    // Cyan
-        case .stretch: return Color(hex: 0xA78BFA) // Violet
-        case .water: return Color(hex: 0x60A5FA)   // Blue
+        case .eyes: return Mono.gpuAccent    // Cyan
+        case .stretch: return Mono.networkAccent // Violet
+        case .water: return Mono.infoAccent   // Blue
         }
     }
 }

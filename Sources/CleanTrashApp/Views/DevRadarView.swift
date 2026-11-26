@@ -36,7 +36,7 @@ struct DevRadarView: View {
                     .padding(.trailing, 8)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
-                        Text("Dev Radar")
+                        Text("Proyectos")
                             .font(.system(size: 28, weight: .light))
                             .foregroundStyle(Mono.ink(scheme))
                         HStack(spacing: 4) {

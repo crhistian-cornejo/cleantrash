@@ -56,7 +56,9 @@ struct NotchRootView: View {
 
     private var isIsland: Bool { appState.settings.notchStyle == .island }
     private var surface: NotchSurfaceMode { appState.settings.notchSurface }
-    private var hasNotice: Bool { appState.activeNotice != nil && !coordinator.isExpanded }
+    private var hasNotice: Bool { appState.activeNotice != nil && !coordinator.isExpanded && !hasHUD }
+    /// Volume / brightness overlay riding the closed notch.
+    private var hasHUD: Bool { appState.hud.current != nil && !coordinator.isExpanded && appState.agents.pending.isEmpty }
     /// An agent is waiting for Allow / Deny: the closed notch grows into a permission card.
     private var hasPermission: Bool { !appState.agents.pending.isEmpty && !coordinator.isExpanded }
 
@@ -71,14 +73,24 @@ struct NotchRootView: View {
         guard appState.settings.showLiveNotchEars else { return false }
         if appState.activityLabel != nil { return true }
         if !appState.agents.earStack.isEmpty { return true }
-        if appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack { return true }
+        if showsMusicInEars { return true }
         if appState.productivity.isTimerRunning { return true }
         return false
     }
 
+    /// The closed notch hands music over to the floating player while that one is on screen.
+    private var showsMusicInEars: Bool {
+        appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack
+            && !appState.productivity.floatingPlayer.isShown
+    }
+
+    /// Breathing room between ear content and the camera housing.
+    private static let cameraGap: CGFloat = 12
+
     private var targetWidth: CGFloat {
         if coordinator.isExpanded { return coordinator.expandedWidth(for: appState.settings.homeWidgets) }
         if hasPermission { return NotchCoordinator.permissionWidth }
+        if hasHUD { return coordinator.closedWidth + 2 * NotchCoordinator.earWidth }
         if hasNotice { return NotchCoordinator.noticeWidth }
         if hasLiveClosedEars {
             return coordinator.closedWidth + 2 * NotchCoordinator.earWidth
@@ -144,6 +156,14 @@ struct NotchRootView: View {
                     } else if let request = appState.agents.pending.first {
                         permissionContent(request)
                             .transition(.opacity)
+                    } else if hasHUD, let hud = appState.hud.current {
+                        NotchSystemHUDView(
+                            event: hud,
+                            earWidth: NotchCoordinator.earWidth,
+                            sidePad: 23,
+                            cameraGap: Self.cameraGap
+                        )
+                        .transition(.opacity)
                     } else if let notice = appState.activeNotice {
                         noticeContent(notice)
                             .transition(.opacity)
@@ -201,6 +221,7 @@ struct NotchRootView: View {
             .animation(reduceMotion ? .none : Mono.betweenSpring, value: surface)
             .animation(reduceMotion ? .none : Mono.betweenSpring, value: isIsland)
             .animation(reduceMotion ? .none : Mono.betweenSpring, value: appState.activeNotice?.id)
+            .animation(reduceMotion ? .none : Mono.betweenSpring, value: appState.hud.current == nil)
             .animation(reduceMotion ? .none : Mono.betweenSpring, value: appState.agents.pending.first?.id)
         }
         .frame(width: coordinator.stageWidth, height: coordinator.stageHeight, alignment: .top)
@@ -249,7 +270,7 @@ struct NotchRootView: View {
         return HStack(spacing: 0) {
             if hasLiveClosedEars {
                 let stack = appState.agents.earStack
-                let showMusic = appState.settings.showMusicInNotchEars && appState.media.hasActiveTrack
+                let showMusic = showsMusicInEars
 
                 // Left ear: CleanTrash active task → Music artwork + track title → Agent stack → Timer
                 Group {
@@ -316,12 +337,10 @@ struct NotchRootView: View {
                         }
                         .transition(.opacity)
                     } else if !stack.isEmpty {
-                        HStack(spacing: -4) {
-                            ForEach(stack.prefix(3)) { s in
-                                ProviderLogo(source: s.source, size: 17)
-                            }
-                        }
-                        .transition(.opacity)
+                        // No music: the agent logos move to the left ear, their live activity stays on the right.
+                        NotchAgentsEar(stack: stack, part: .avatars)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .transition(.opacity)
                     } else if appState.productivity.isTimerRunning {
                         NotchTimerEar(
                             formatted: appState.productivity.timerFormatted,
@@ -330,16 +349,18 @@ struct NotchRootView: View {
                         .transition(.opacity)
                     }
                 }
+                .padding(.trailing, Self.cameraGap)
                 .frame(width: NotchCoordinator.earWidth - sidePad, alignment: .leading)
                 .padding(.leading, sidePad)
                 .animation(Mono.betweenSpring, value: appState.activityLabel)
+                .animation(Mono.betweenSpring, value: showMusic)
 
                 Spacer(minLength: 0)
 
                 // Right ear: Agents live tool → Music live lyric + animated waveform → Focus Timer
                 Group {
                     if !stack.isEmpty {
-                        NotchAgentsEar(stack: stack)
+                        NotchAgentsEar(stack: stack, part: showMusic ? .both : .label)
                     } else if showMusic {
                         HStack(spacing: 6) {
                             if appState.settings.showLyricsInNotchEar, let lyric = appState.media.currentLyricLine {
@@ -368,8 +389,11 @@ struct NotchRootView: View {
                             .lineLimit(1)
                     }
                 }
-                .frame(width: NotchCoordinator.earWidth - sidePad, alignment: .trailing)
+                // Starts right where the camera housing ends so labels get the whole ear.
+                .padding(.leading, Self.cameraGap)
+                .frame(width: NotchCoordinator.earWidth - sidePad, alignment: .leading)
                 .padding(.trailing, sidePad)
+                .animation(Mono.betweenSpring, value: showMusic)
             } else {
                 Spacer()
             }
@@ -381,14 +405,6 @@ struct NotchRootView: View {
         guard let label = appState.activityLabel else { return "" }
         let word = label.split(separator: " ").first.map(String.init) ?? label
         return word.replacingOccurrences(of: "…", with: "")
-    }
-
-    private var memoryDotColor: Color {
-        switch appState.telemetry.memory.pressure {
-        case .normal: return Color.white.opacity(0.45)
-        case .critical: return Mono.danger
-        default: return Mono.caution
-        }
     }
 
     // MARK: - Agent Permission Toast
@@ -505,12 +521,12 @@ struct NotchRootView: View {
 
     private func noticeGradient(_ kind: NotchNoticeKind) -> [Color] {
         switch kind {
-        case .cleaned: return [Color(hex: 0x34D399), Color(hex: 0x22D3EE), Color(hex: 0x818CF8)]
-        case .warning, .highMemory: return [Color(hex: 0xFBBF24), Color(hex: 0xF97316), Color(hex: 0xF472B6)]
-        case .heavyCPU: return [Color(hex: 0xF97316), Color(hex: 0xEF4444), Color(hex: 0xA855F7)]
-        case .failed: return [Color(hex: 0xEF4444), Color(hex: 0xF43F5E), Color(hex: 0xA855F7)]
-        case .devBloat: return [Color(hex: 0x60A5FA), Color(hex: 0x818CF8), Color(hex: 0xC084FC)]
-        case .unusedApp: return [Color(hex: 0xC084FC), Color(hex: 0xF472B6), Color(hex: 0x60A5FA)]
+        case .cleaned: return [Mono.healthy, Color(hex: 0x22D3EE), Mono.cpuAccent]
+        case .warning, .highMemory: return [Mono.caution, Color(hex: 0xF97316), Color(hex: 0xF472B6)]
+        case .heavyCPU: return [Color(hex: 0xF97316), Mono.dangerStrong, Color(hex: 0xA855F7)]
+        case .failed: return [Mono.dangerStrong, Color(hex: 0xF43F5E), Color(hex: 0xA855F7)]
+        case .devBloat: return [Mono.infoAccent, Mono.cpuAccent, Color(hex: 0xC084FC)]
+        case .unusedApp: return [Color(hex: 0xC084FC), Color(hex: 0xF472B6), Mono.infoAccent]
         }
     }
 
@@ -706,7 +722,7 @@ struct NotchRootView: View {
                         id: "widgets",
                         label: "Widgets",
                         symbol: "square.grid.2x2",
-                        tint: coordinator.isEditingWidgets ? Color(hex: 0x60A5FA) : Color.white.opacity(0.74),
+                        tint: coordinator.isEditingWidgets ? Mono.infoAccent : Color.white.opacity(0.74),
                         isActive: coordinator.isEditingWidgets
                     ) {
                         withAnimation(reduceMotion ? .none : Mono.openingSpring) {
@@ -740,7 +756,7 @@ struct NotchRootView: View {
                     dockUtilitySymbolButton(
                         id: "surface",
                         label: surface.label,
-                        symbol: surfaceIcon,
+                        symbol: surface.symbol,
                         tint: surface.isGlass ? Color.white : Color.white.opacity(0.66),
                         isActive: surface.isGlass
                     ) {
@@ -981,17 +997,6 @@ struct NotchRootView: View {
         .padding(.top, isIsland ? 6 : 0)
     }
 
-    private var surfaceIcon: String {
-        switch surface {
-        case .obsidian: return "moon.fill"
-        case .glass: return "drop.halffull"
-        case .clearGlass: return "sparkles"
-        }
-    }
-
-    /// 4 rows fit the shelf exactly; with more items show 3 + a "see all" link.
-    private var devRowLimit: Int { appState.devArtifacts.count > 4 ? 3 : 4 }
-
     private func tabBadge(_ tab: NotchTab) -> String? {
         switch tab {
         case .shelf:
@@ -1004,68 +1009,5 @@ struct NotchRootView: View {
             let pending = appState.agents.pending.count
             return pending > 0 ? "\(pending)" : nil
         }
-    }
-}
-
-/// Tile background that lights up on hover and opens the drill-down when tapped anywhere outside its button.
-private struct NotchTileChrome: ViewModifier {
-    let onOpen: (() -> Void)?
-    @Environment(\.notchSurface) private var surface
-    @State private var hovering = false
-
-    func body(content: Content) -> some View {
-        let active = hovering && onOpen != nil
-        let fillColor: Color = surface.isGlass
-            ? Color.white.opacity(active ? 0.10 : 0.05)
-            : Color(hex: active ? 0x1A1A1D : 0x111114)
-        let borderOpacity = surface.isGlass
-            ? (active ? 0.24 : 0.10)
-            : (active ? 0.26 : 0.10)
-
-        content
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(fillColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.white.opacity(borderOpacity), lineWidth: 1)
-            )
-            .background(alignment: .topLeading) {
-                if active {
-                    Circle()
-                        .fill(Color.white.opacity(0.10))
-                        .frame(width: 90, height: 90)
-                        .blur(radius: 22)
-                        .offset(x: -16, y: -20)
-                        .allowsHitTesting(false)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .onHover { inside in
-                withAnimation(Mono.fast) { hovering = inside }
-            }
-            .onTapGesture { onOpen?() }
-            .scaleEffect(active ? 1.01 : 1)
-            .animation(Mono.fast, value: hovering)
-    }
-}
-
-/// Thin progress bar for dark notch surfaces, optionally tinted (red when the CPU is overloaded).
-private struct NotchBar: View {
-    let value: Double
-    var tint: Color = .white
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.16))
-                Capsule().fill(tint)
-                    .frame(width: max(0, geo.size.width * min(1, max(0, value))))
-                    .animation(Mono.betweenSpring, value: value)
-            }
-        }
-        .frame(height: 4.5)
     }
 }

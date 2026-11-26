@@ -151,6 +151,19 @@ final class ProductivityHub {
     @ObservationIgnored private var timerTask: Task<Void, Never>?
     @ObservationIgnored private var weatherTask: Task<Void, Never>?
     @ObservationIgnored private var accessoriesTask: Task<Void, Never>?
+    @ObservationIgnored private var lastBatteryRead = Date.distantPast
+    @ObservationIgnored private var lastWeatherFetch = Date.distantPast
+
+    /// Home widgets currently in the notch; data for hidden widgets isn't fetched.
+    @ObservationIgnored var activeWidgets: Set<NotchWidgetID> = []
+    /// The Notch section of the main window shows every widget.
+    @ObservationIgnored var isHubVisible = false {
+        didSet { if isHubVisible && !oldValue { refreshVisibleData() } }
+    }
+
+    private func wants(_ widget: NotchWidgetID) -> Bool {
+        isHubVisible || activeWidgets.contains(widget)
+    }
     @ObservationIgnored private var lastPasteboardChangeCount: Int = NSPasteboard.general.changeCount
     @ObservationIgnored private let shelfStorageURL: URL
     @ObservationIgnored private let notesStorageURL: URL
@@ -247,23 +260,49 @@ final class ProductivityHub {
         accessoriesTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { break }
-                let devices = await Task.detached(priority: .utility) {
-                    BluetoothBatteryReader.readConnectedAccessories()
-                }.value
-                self.bluetoothBatteries = devices
-                for dev in devices {
-                    if dev.percent <= 20 && !dev.isCharging {
-                        if !self.alertedLowBatteryIDs.contains(dev.id) {
-                            self.alertedLowBatteryIDs.insert(dev.id)
-                            self.onAccessoryLowBattery?(dev)
-                        }
-                    } else if dev.percent >= 30 || dev.isCharging {
-                        self.alertedLowBatteryIDs.remove(dev.id)
+                if !SystemActivity.isIdle {
+                    // `system_profiler` is slow: every 30 s while batteries are on screen, otherwise
+                    // every 5 min just to catch a low accessory battery.
+                    let batteryInterval: TimeInterval = self.wants(.batteries) ? 30 : 300
+                    if Date.now.timeIntervalSince(self.lastBatteryRead) >= batteryInterval {
+                        await self.readBatteries()
                     }
+                    if self.wants(.audio) { self.refreshAudioState() }
+                    if self.wants(.calendar) { self.refreshCalendar() }
                 }
-                self.refreshAudioState()
-                self.refreshCalendar()
-                try? await Task.sleep(for: .seconds(25))
+                try? await Task.sleep(for: .seconds(30))
+            }
+        }
+    }
+
+    private func readBatteries() async {
+        lastBatteryRead = .now
+        let devices = await Task.detached(priority: .utility) {
+            BluetoothBatteryReader.readConnectedAccessories()
+        }.value
+        bluetoothBatteries = devices
+        for dev in devices {
+            if dev.percent <= 20 && !dev.isCharging {
+                if !alertedLowBatteryIDs.contains(dev.id) {
+                    alertedLowBatteryIDs.insert(dev.id)
+                    onAccessoryLowBattery?(dev)
+                }
+            } else if dev.percent >= 30 || dev.isCharging {
+                alertedLowBatteryIDs.remove(dev.id)
+            }
+        }
+    }
+
+    /// Catches up on data for widgets that just became visible.
+    func refreshVisibleData() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if self.wants(.batteries), Date.now.timeIntervalSince(self.lastBatteryRead) > 30 { await self.readBatteries() }
+            if self.wants(.audio) { self.refreshAudioState() }
+            if self.wants(.calendar) { self.refreshCalendar() }
+            if self.wants(.weather), Date.now.timeIntervalSince(self.lastWeatherFetch) > 20 * 60 {
+                self.lastWeatherFetch = .now
+                await self.refreshWeather()
             }
         }
     }
@@ -390,8 +429,12 @@ final class ProductivityHub {
         weatherTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { break }
-                await self.refreshWeather()
-                try? await Task.sleep(for: .seconds(20 * 60))
+                if !SystemActivity.isIdle, self.wants(.weather),
+                   Date.now.timeIntervalSince(self.lastWeatherFetch) > 20 * 60 {
+                    self.lastWeatherFetch = .now
+                    await self.refreshWeather()
+                }
+                try? await Task.sleep(for: .seconds(60))
             }
         }
     }
@@ -689,7 +732,7 @@ final class ProductivityHub {
         clipboardTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(750))
-                guard let self, self.clipboardEnabled else { continue }
+                guard let self, self.clipboardEnabled, !SystemActivity.isIdle else { continue }
                 let count = NSPasteboard.general.changeCount
                 if count != self.lastPasteboardChangeCount {
                     self.lastPasteboardChangeCount = count

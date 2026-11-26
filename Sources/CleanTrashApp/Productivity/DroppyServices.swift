@@ -539,20 +539,30 @@ private struct FloatingPanelDragSurface: NSViewRepresentable {
 }
 
 @MainActor
+@Observable
 final class FloatingPlayerWindowController {
-    private var panel: NSPanel?
+    @ObservationIgnored private var panel: NSPanel?
+
+    /// Observable so the notch can drop its own player while the floating one is on screen.
+    private(set) var isShown = false
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
     func toggle(media: MediaPlayerController, surface: NotchSurfaceMode) {
         if let existing = panel, existing.isVisible {
-            existing.orderOut(nil)
+            hide()
             return
         }
         show(media: media, surface: surface)
     }
 
+    func hide() {
+        panel?.orderOut(nil)
+        isShown = false
+    }
+
     func show(media: MediaPlayerController, surface: NotchSurfaceMode) {
+        isShown = true
         if let existing = panel {
             existing.orderFrontRegardless()
             return
@@ -599,8 +609,8 @@ final class FloatingPlayerWindowController {
                 }
                 p.setFrame(frame, display: true, animate: true)
             },
-            onClose: { [weak p] in
-                p?.orderOut(nil)
+            onClose: { [weak self] in
+                self?.hide()
             }
         )
         let hosting = NSHostingView(rootView: content)
@@ -1017,7 +1027,6 @@ private struct FloatingMiniPlayerView: View {
     }
 
     private func formatTime(_ seconds: Double) -> String {
-        let s = max(0, Int(seconds.rounded()))
-        return String(format: "%d:%02d", s / 60, s % 60)
+        TimeFormat.clock(seconds)
     }
 }
